@@ -686,22 +686,6 @@
             }
         }
 
-        // Apply a window/zoom selection (from a 2D panel) onto an axis filter,
-        // snapping outward to the slider step and keeping the handles in sync.
-        function applyWindow(axis, lo, hi) {
-            const r = rng[axis];
-            const inp = rngEl[axis].querySelector('input[type=range]');
-            const step = Number(inp && inp.step) || 1;
-            lo = Math.max(r.min, Math.floor(lo / step) * step);
-            hi = Math.min(r.max, Math.ceil(hi / step) * step);
-            if (hi <= lo) hi = Math.min(r.max, lo + step);
-            r.lo = lo; r.hi = hi;
-            rngEl[axis].querySelectorAll('input[type=range]').forEach(i => {
-                i.value = i.dataset.end === 'lo' ? lo : hi;
-            });
-            syncSlider(axis);
-        }
-
         // SVG glyph for each Plotly marker symbol (matches shapes[] order)
         function shapeGlyph(symbol, color) {
             const c = color || 'var(--text)';
@@ -1034,8 +1018,42 @@
             }), cfg).then(p => wireOrtho(p, 'agents', 'price'));
         }
 
+        // Which logical axis ('agents'|'fps'|'price') each 2D panel edge represents.
+        // fps is stored in log2 space on every plot (2D edges + 3D scene.yaxis), so ranges map 1:1.
+        const orthoPanels = {
+            'plot-xy': { x: 'agents', y: 'fps' },
+            'plot-yz': { x: 'fps', y: 'price' },
+            'plot-zx': { x: 'agents', y: 'price' }
+        };
+        let zoomSyncing = false; // guard against relayout feedback loops
+
+        // Mirror a zoom/window selection onto every other view's matching axes.
+        // changes: { agents?: [lo,hi], fps?: [lo,hi], price?: [lo,hi] }
+        function syncZoom(sourceId, changes) {
+            if (!Object.keys(changes).length) return;
+            zoomSyncing = true;
+            const jobs = [];
+            // Other 2D panels
+            Object.keys(orthoPanels).forEach(id => {
+                if (id === sourceId) return;
+                const map = orthoPanels[id], update = {};
+                if (changes[map.x]) update['xaxis.range'] = changes[map.x].slice();
+                if (changes[map.y]) update['yaxis.range'] = changes[map.y].slice();
+                if (Object.keys(update).length) jobs.push(Plotly.relayout(id, update));
+            });
+            // 3D scene: agents->x, fps->y, price->z
+            if (els.plot && els.plot.layout && els.plot.layout.scene) {
+                const sUpdate = {};
+                if (changes.agents) sUpdate['scene.xaxis.range'] = changes.agents.slice();
+                if (changes.fps)    sUpdate['scene.yaxis.range'] = changes.fps.slice();
+                if (changes.price)  sUpdate['scene.zaxis.range'] = changes.price.slice();
+                if (Object.keys(sUpdate).length) jobs.push(Plotly.relayout(els.plot, sUpdate));
+            }
+            Promise.all(jobs).finally(() => { zoomSyncing = false; });
+        }
+
         // Hook hover (HUD) + click (select) into a 2D ortho plot.
-        // xAxis/yAxis name which shared filter axis ('agents'|'fps'|'price') each plot edge maps to.
+        // xAxis/yAxis name which logical axis ('agents'|'fps'|'price') each plot edge maps to.
         function wireOrtho(plotEl, xAxis, yAxis) {
             plotEl.on('plotly_hover', e => {
                 const p = e.points[0].customdata;
@@ -1051,24 +1069,21 @@
                 if(p) selectSystem(p.name);
             });
 
-            // Box-zoom / window selection -> sync the window across all views.
-            // Programmatic redraws use Plotly.newPlot (no relayout event), so no feedback loop.
+            // Box-zoom / autorange-reset on this panel -> zoom every other view to match.
             plotEl.on('plotly_relayout', e => {
-                if (!e) return;
-                let changed = false;
+                if (!e || zoomSyncing) return; // ignore programmatic relayouts we triggered
+                const changes = {};
                 if (e['xaxis.range[0]'] !== undefined && e['xaxis.range[1]'] !== undefined) {
-                    applyWindow(xAxis, Math.min(e['xaxis.range[0]'], e['xaxis.range[1]']), Math.max(e['xaxis.range[0]'], e['xaxis.range[1]']));
-                    changed = true;
+                    changes[xAxis] = [Math.min(e['xaxis.range[0]'], e['xaxis.range[1]']), Math.max(e['xaxis.range[0]'], e['xaxis.range[1]'])];
                 } else if (e['xaxis.autorange']) {
-                    applyWindow(xAxis, rng[xAxis].min, rng[xAxis].max); changed = true;
+                    changes[xAxis] = [rng[xAxis].min, rng[xAxis].max];
                 }
                 if (e['yaxis.range[0]'] !== undefined && e['yaxis.range[1]'] !== undefined) {
-                    applyWindow(yAxis, Math.min(e['yaxis.range[0]'], e['yaxis.range[1]']), Math.max(e['yaxis.range[0]'], e['yaxis.range[1]']));
-                    changed = true;
+                    changes[yAxis] = [Math.min(e['yaxis.range[0]'], e['yaxis.range[1]']), Math.max(e['yaxis.range[0]'], e['yaxis.range[1]'])];
                 } else if (e['yaxis.autorange']) {
-                    applyWindow(yAxis, rng[yAxis].min, rng[yAxis].max); changed = true;
+                    changes[yAxis] = [rng[yAxis].min, rng[yAxis].max];
                 }
-                if (changed) { draw(); renderTable(); }
+                syncZoom(plotEl.id, changes);
             });
         }
 
