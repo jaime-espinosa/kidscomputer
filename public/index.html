@@ -331,12 +331,12 @@
             <div>
                 <div class="rng-head">
                     <span class="ctrl-label" style="margin-bottom:0"><span class="dot" style="background:var(--accent)"></span>Agents</span>
-                    <span class="rng-val mono"><b id="rv-agents-lo">0</b> &ndash; <b id="rv-agents-hi">34</b></span>
+                    <span class="rng-val mono"><b id="rv-agents-lo">0</b> &ndash; <b id="rv-agents-hi">12</b></span>
                 </div>
                 <div class="rng-track" id="rt-agents">
                     <div class="rng-rail"></div><div class="rng-fill"></div>
-                    <input type="range" data-axis="agents" data-end="lo" min="0" max="34" step="1" value="0">
-                    <input type="range" data-axis="agents" data-end="hi" min="0" max="34" step="1" value="34">
+                    <input type="range" data-axis="agents" data-end="lo" min="0" max="12" step="1" value="0">
+                    <input type="range" data-axis="agents" data-end="hi" min="0" max="12" step="1" value="12">
                 </div>
             </div>
             <div>
@@ -634,7 +634,7 @@
 
         // Axis range state (fps stored as log2 exponents)
         const rng = {
-            agents: { lo: 0, hi: 34, min: 0, max: 34 },
+            agents: { lo: 0, hi: 12, min: 0, max: 12 },
             fps:    { lo: 3, hi: 10, min: 3, max: 10 },
             price:  { lo: 0, hi: 5200, min: 0, max: 5200 }
         };
@@ -742,7 +742,7 @@
             els.gradeEditor.classList.toggle('hidden', !gradesOn);
 
             // Coordinate plane ranges: static keeps fixed walls, dynamic rescales to slider range
-            const xRange = dynamic ? [rng.agents.lo, rng.agents.hi] : [0, 34];
+            const xRange = dynamic ? [rng.agents.lo, rng.agents.hi] : [0, 12];
             const yRange = dynamic ? [rng.fps.lo, rng.fps.hi] : [Math.log2(8), Math.log2(1024)];
             const zRange = dynamic ? [rng.price.lo, rng.price.hi] : [0, 5200];
             let uCols = cMode !== 'value' && cMode !== 'none' ? [...new Set(data.map(d => d[cMode]))] : [];
@@ -970,7 +970,7 @@
                 x: data.map(d => d.agents), y: log2Fps,
                 customdata: data, hoverinfo: 'none', marker
             }], Object.assign({}, baseLayout, {
-                xaxis: Object.assign({ title: 'Agents', range: [0, 34] }, ax),
+                xaxis: Object.assign({ title: 'Agents', range: [0, 12] }, ax),
                 yaxis: Object.assign({ title: 'FPS', range: [Math.log2(8), Math.log2(1024)] }, ax, fpsTicks)
             }), cfg).then(p => wireOrtho(p));
 
@@ -990,7 +990,7 @@
                 x: data.map(d => d.agents), y: data.map(d => d.z),
                 customdata: data, hoverinfo: 'none', marker
             }], Object.assign({}, baseLayout, {
-                xaxis: Object.assign({ title: 'Agents', range: [0, 34] }, ax),
+                xaxis: Object.assign({ title: 'Agents', range: [0, 12] }, ax),
                 yaxis: Object.assign({ title: 'Price ($)', range: [0, 5200] }, ax)
             }), cfg).then(p => wireOrtho(p));
         }
