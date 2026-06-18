@@ -1,0 +1,1275 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hardware Fleet Matrix</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.plot.ly/plotly-2.32.0.min.js"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg: #070b14;
+            --panel: #0d1424;
+            --panel-2: #111a2e;
+            --border: #1e2a44;
+            --border-soft: #182236;
+            --text: #e7ecf5;
+            --muted: #8a97b0;
+            --faint: #5b6883;
+            --accent: #38bdf8;
+            --accent-dim: #0ea5e9;
+            --good: #34d399;
+            --warn: #f59e0b;
+        }
+        * { box-sizing: border-box; }
+        html, body { background: var(--bg); }
+        body {
+            color: var(--text);
+            font-family: 'Inter', system-ui, sans-serif;
+            -webkit-font-smoothing: antialiased;
+            background-image:
+                radial-gradient(900px circle at 0% -10%, rgba(56,189,248,0.07), transparent 45%),
+                radial-gradient(900px circle at 100% 0%, rgba(52,211,153,0.05), transparent 45%);
+        }
+        .mono { font-family: 'JetBrains Mono', ui-monospace, monospace; }
+
+        .panel {
+            background: linear-gradient(180deg, rgba(17,26,46,0.85), rgba(13,20,36,0.85));
+            border: 1px solid var(--border);
+            box-shadow: 0 1px 0 rgba(255,255,255,0.03) inset, 0 20px 40px -28px rgba(0,0,0,0.9);
+            backdrop-filter: blur(10px);
+        }
+        .hud {
+            background: rgba(7,11,20,0.82);
+            border: 1px solid rgba(56,189,248,0.28);
+            box-shadow: 0 0 0 1px rgba(56,189,248,0.05), 0 18px 40px -20px rgba(0,0,0,0.9);
+            backdrop-filter: blur(10px);
+        }
+
+        /* Control label */
+        .ctrl-label {
+            font-size: 10px;
+            letter-spacing: 0.12em;
+            text-transform: uppercase;
+            color: var(--faint);
+            font-weight: 600;
+            margin-bottom: 6px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        .dot { width: 6px; height: 6px; border-radius: 99px; display: inline-block; }
+
+        /* Selects */
+        select {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 100%;
+            background-color: var(--panel-2);
+            border: 1px solid var(--border);
+            color: var(--text);
+            font-size: 13px;
+            font-weight: 500;
+            border-radius: 10px;
+            padding: 10px 36px 10px 12px;
+            cursor: pointer;
+            transition: border-color .15s ease, box-shadow .15s ease, background-color .15s ease;
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%238a97b0' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
+            background-repeat: no-repeat;
+            background-position: right 11px center;
+        }
+        select:hover { border-color: #2c3c5e; background-color: #131d33; }
+        select:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px rgba(56,189,248,0.15); }
+        select option { background: #0d1424; color: var(--text); }
+
+        .stat-tile {
+            background: var(--panel-2);
+            border: 1px solid var(--border-soft);
+            border-radius: 12px;
+            transition: transform .15s ease, border-color .15s ease;
+        }
+        .stat-tile:hover { border-color: #2c3c5e; }
+
+        .badge {
+            font-size: 10px;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+            font-weight: 600;
+            padding: 3px 9px;
+            border-radius: 99px;
+            border: 1px solid var(--border);
+            background: var(--panel-2);
+            color: var(--muted);
+        }
+        .badge-accent { border-color: rgba(56,189,248,0.3); background: rgba(56,189,248,0.1); color: #7dd3fc; }
+
+        .scanline { position: relative; }
+        .scanline::after {
+            content: "";
+            position: absolute; inset: 0;
+            pointer-events: none;
+            background: repeating-linear-gradient(0deg, rgba(255,255,255,0.012) 0 1px, transparent 1px 3px);
+            border-radius: inherit;
+        }
+        ::-webkit-scrollbar { width: 8px; }
+        ::-webkit-scrollbar-thumb { background: #243149; border-radius: 99px; }
+
+        /* Dual range sliders */
+        .rng-head { display: flex; align-items: center; justify-content: space-between; }
+        .rng-val { font-size: 11px; color: var(--muted); }
+        .rng-val b { color: var(--accent); font-weight: 600; }
+        .rng-track {
+            position: relative;
+            height: 26px;
+            margin-top: 4px;
+        }
+        .rng-rail {
+            position: absolute;
+            top: 50%; left: 0; right: 0;
+            height: 4px;
+            transform: translateY(-50%);
+            background: var(--panel-2);
+            border: 1px solid var(--border-soft);
+            border-radius: 99px;
+        }
+        .rng-fill {
+            position: absolute;
+            top: 50%;
+            height: 4px;
+            transform: translateY(-50%);
+            background: linear-gradient(90deg, var(--accent-dim), var(--accent));
+            border-radius: 99px;
+        }
+        .rng-track input[type=range] {
+            -webkit-appearance: none;
+            appearance: none;
+            position: absolute;
+            top: 0; left: 0;
+            width: 100%;
+            height: 26px;
+            margin: 0;
+            background: none;
+            pointer-events: none;
+        }
+        .rng-track input[type=range]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            pointer-events: auto;
+            width: 15px; height: 15px;
+            border-radius: 99px;
+            background: var(--text);
+            border: 3px solid var(--accent-dim);
+            box-shadow: 0 2px 6px -1px rgba(0,0,0,0.8);
+            cursor: grab;
+            transition: border-color .15s ease, transform .1s ease;
+        }
+        .rng-track input[type=range]::-webkit-slider-thumb:hover { border-color: var(--accent); transform: scale(1.12); }
+        .rng-track input[type=range]::-webkit-slider-thumb:active { cursor: grabbing; }
+        .rng-track input[type=range]::-moz-range-thumb {
+            pointer-events: auto;
+            width: 15px; height: 15px;
+            border-radius: 99px;
+            background: var(--text);
+            border: 3px solid var(--accent-dim);
+            cursor: grab;
+        }
+
+        /* Data table */
+        .dt-wrap { overflow-x: auto; }
+        table.dt { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+        table.dt thead th {
+            position: sticky; top: 0;
+            background: var(--panel-2);
+            color: var(--muted);
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.06em;
+            font-size: 10px;
+            text-align: left;
+            padding: 9px 12px;
+            border-bottom: 1px solid var(--border);
+            white-space: nowrap;
+            cursor: pointer;
+            user-select: none;
+        }
+        table.dt thead th:hover { color: var(--text); }
+        table.dt thead th.active { color: var(--text); }
+        table.dt thead th.num, table.dt tbody td.num { text-align: right; font-family: 'JetBrains Mono', monospace; }
+        table.dt tbody td {
+            padding: 8px 12px;
+            border-bottom: 1px solid var(--border-soft);
+            color: var(--text);
+            white-space: nowrap;
+        }
+        table.dt tbody tr { cursor: pointer; transition: background .12s ease; }
+        table.dt tbody tr:hover { background: rgba(56,189,248,0.06); }
+        table.dt tbody tr.sel {
+            background: rgba(56,189,248,0.14);
+            box-shadow: inset 3px 0 0 var(--accent);
+        }
+        table.dt tbody tr.sel td { color: var(--text); }
+        .tag {
+            display: inline-block;
+            font-size: 10px;
+            padding: 1px 7px;
+            border-radius: 99px;
+            border: 1px solid var(--border);
+            color: var(--muted);
+        }
+
+        /* Card action links */
+        .clink {
+            display: inline-flex; align-items: center; gap: 6px;
+            font-size: 12px; font-weight: 600;
+            padding: 8px 14px;
+            border-radius: 10px;
+            text-decoration: none;
+            transition: transform .1s ease, background .15s ease, border-color .15s ease;
+        }
+        .clink:hover { transform: translateY(-1px); }
+        .clink-buy { background: var(--good); color: #07120c; }
+        .clink-buy:hover { background: #4ade80; }
+        .clink-rev {
+            background: var(--panel-2); color: var(--text);
+            border: 1px solid var(--border);
+        }
+        .clink-rev:hover { border-color: var(--accent); color: var(--accent); }
+    </style>
+</head>
+<body class="min-h-screen">
+  <div class="max-w-7xl mx-auto flex flex-col gap-4 p-4 md:p-6">
+
+    <!-- HEADER + CONTROLS -->
+    <header class="panel rounded-2xl overflow-hidden">
+        <div class="flex flex-wrap items-center justify-between gap-3 px-5 pt-5 pb-4 border-b border-[color:var(--border-soft)]">
+            <div class="flex items-center gap-3">
+                <span class="grid place-items-center w-9 h-9 rounded-xl border border-[color:var(--border)] bg-[color:var(--panel-2)] text-[color:var(--accent)]">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="1.8"><rect x="4" y="4" width="16" height="16" rx="2"/><rect x="9" y="9" width="6" height="6"/><path d="M9 1v3M15 1v3M9 20v3M15 20v3M1 9h3M1 15h3M20 9h3M20 15h3"/></svg>
+                </span>
+                <div>
+                    <h1 class="text-lg md:text-xl font-bold tracking-tight leading-none">Hardware Fleet Matrix</h1>
+                    <p class="text-xs text-[color:var(--muted)] mt-1">AI swarm &times; rendering capability across the fleet</p>
+                </div>
+            </div>
+            <div class="flex items-center gap-2 text-[11px] mono text-[color:var(--faint)]">
+                <span id="src-pill" class="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-[color:var(--border)] bg-[color:var(--panel-2)]" title="Data source">
+                    <span id="src-dot" class="dot" style="background:var(--faint)"></span><span id="src-label">Loading&hellip;</span>
+                </span>
+                <span class="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-[color:var(--border)] bg-[color:var(--panel-2)]"><span class="dot" style="background:var(--accent)"></span>Hover&nbsp;&middot;&nbsp;HUD</span>
+                <span class="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-[color:var(--border)] bg-[color:var(--panel-2)]"><span class="dot" style="background:var(--good)"></span>Click&nbsp;&middot;&nbsp;Details</span>
+                <button id="btn-reset" type="button" class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-[color:var(--border)] bg-[color:var(--panel-2)] text-[color:var(--text)] font-semibold transition hover:border-[color:var(--accent)] hover:text-[color:var(--accent)]">
+                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+                    Reset
+                </button>
+            </div>
+        </div>
+
+        <div class="grid grid-cols-2 lg:grid-cols-4 gap-x-4 gap-y-3 px-5 py-4">
+            <div>
+                <span class="ctrl-label"><span class="dot" style="background:var(--faint)"></span>Filter &mdash; Type</span>
+                <select id="f-type">
+                    <option value="All">All Types</option>
+                    <option value="Laptop">Laptops Only</option>
+                    <option value="Desktop">Desktops Only</option>
+                </select>
+            </div>
+            <div>
+                <span class="ctrl-label"><span class="dot" style="background:var(--faint)"></span>Filter &mdash; Condition</span>
+                <select id="f-cond">
+                    <option value="All">All Conditions</option>
+                    <option value="New">New</option>
+                    <option value="Used">Used</option>
+                </select>
+            </div>
+            <div>
+                <span class="ctrl-label"><span class="dot" style="background:var(--accent)"></span>Color by Metric</span>
+                <select id="m-color">
+                    <option value="value">Mem / $ (Heatmap)</option>
+                    <option value="survivability">Survivability</option>
+                    <option value="type">Form Factor</option>
+                    <option value="condition">Condition</option>
+                    <option value="none">Uniform (Ghost)</option>
+                </select>
+            </div>
+            <div>
+                <span class="ctrl-label"><span class="dot" style="background:var(--good)"></span>Shape by Metric</span>
+                <select id="m-shape">
+                    <option value="owned">Ownership</option>
+                    <option value="type">Form Factor</option>
+                    <option value="condition">Condition</option>
+                    <option value="none">Uniform</option>
+                </select>
+            </div>
+            <div>
+                <span class="ctrl-label"><span class="dot" style="background:var(--accent)"></span>Orthogonal Views</span>
+                <select id="m-proj">
+                    <option value="off">Off</option>
+                    <option value="walls">On Plot (wall shadows)</option>
+                    <option value="panels">2D Panels (XY · YZ · ZX)</option>
+                </select>
+            </div>
+            <div>
+                <span class="ctrl-label"><span class="dot" style="background:var(--good)"></span>Range Mode</span>
+                <select id="m-range">
+                    <option value="dynamic">Dynamic (zoom to data)</option>
+                    <option value="static">Static (fixed planes)</option>
+                </select>
+            </div>
+            <div>
+                <span class="ctrl-label"><span class="dot" style="background:var(--warn)"></span>Grade Price Planes</span>
+                <select id="m-grades">
+                    <option value="off">Off</option>
+                    <option value="on">On (C · B · A · A+ · AA)</option>
+                </select>
+            </div>
+        </div>
+
+        <!-- AXIS RANGE SLIDERS -->
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-x-6 gap-y-4 px-5 pb-5 pt-1 border-t border-[color:var(--border-soft)]">
+            <div>
+                <div class="rng-head">
+                    <span class="ctrl-label" style="margin-bottom:0"><span class="dot" style="background:var(--accent)"></span>Agents</span>
+                    <span class="rng-val mono"><b id="rv-agents-lo">0</b> &ndash; <b id="rv-agents-hi">34</b></span>
+                </div>
+                <div class="rng-track" id="rt-agents">
+                    <div class="rng-rail"></div><div class="rng-fill"></div>
+                    <input type="range" data-axis="agents" data-end="lo" min="0" max="34" step="1" value="0">
+                    <input type="range" data-axis="agents" data-end="hi" min="0" max="34" step="1" value="34">
+                </div>
+            </div>
+            <div>
+                <div class="rng-head">
+                    <span class="ctrl-label" style="margin-bottom:0"><span class="dot" style="background:var(--accent)"></span>FPS (Log2)</span>
+                    <span class="rng-val mono"><b id="rv-fps-lo">8</b> &ndash; <b id="rv-fps-hi">1024</b></span>
+                </div>
+                <div class="rng-track" id="rt-fps">
+                    <div class="rng-rail"></div><div class="rng-fill"></div>
+                    <input type="range" data-axis="fps" data-end="lo" min="3" max="10" step="1" value="3">
+                    <input type="range" data-axis="fps" data-end="hi" min="3" max="10" step="1" value="10">
+                </div>
+            </div>
+            <div>
+                <div class="rng-head">
+                    <span class="ctrl-label" style="margin-bottom:0"><span class="dot" style="background:var(--accent)"></span>Price ($)</span>
+                    <span class="rng-val mono"><b id="rv-price-lo">0</b> &ndash; <b id="rv-price-hi">5200</b></span>
+                </div>
+                <div class="rng-track" id="rt-price">
+                    <div class="rng-rail"></div><div class="rng-fill"></div>
+                    <input type="range" data-axis="price" data-end="lo" min="0" max="5200" step="100" value="0">
+                    <input type="range" data-axis="price" data-end="hi" min="0" max="5200" step="100" value="5200">
+                </div>
+            </div>
+        </div>
+
+        <!-- GRADE PRICE PLANE EDITOR -->
+        <div id="grade-editor" class="hidden px-5 pb-5 pt-4 border-t border-[color:var(--border-soft)]">
+            <div class="flex items-center gap-2 mb-3">
+                <span class="ctrl-label" style="margin-bottom:0"><span class="dot" style="background:var(--warn)"></span>Grade Price Thresholds ($)</span>
+                <span class="text-[11px] mono text-[color:var(--faint)]">horizontal planes on the Price (Z) axis</span>
+            </div>
+            <div id="grade-inputs" class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3"></div>
+        </div>
+    </header>
+
+    <!-- PLOT -->
+    <main class="panel rounded-2xl relative h-[560px] overflow-hidden scanline">
+        <!-- Live HUD -->
+        <div id="live-hud" class="absolute top-4 left-4 z-10 hud px-4 py-3.5 rounded-xl opacity-0 pointer-events-none transition-opacity duration-200 min-w-[170px]">
+            <div class="flex items-center gap-2 mb-2.5 pb-2 border-b border-[rgba(56,189,248,0.2)]">
+                <span class="relative flex h-2 w-2">
+                    <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-[color:var(--accent)] opacity-60"></span>
+                    <span class="relative inline-flex rounded-full h-2 w-2 bg-[color:var(--accent)]"></span>
+                </span>
+                <span class="text-[10px] uppercase tracking-[0.14em] text-[color:var(--accent)] font-bold">Live Telemetry</span>
+            </div>
+            <div class="flex justify-between items-center text-[13px] mb-1.5"><span class="text-[color:var(--muted)]">Agents</span><span id="h-x" class="mono font-bold">0</span></div>
+            <div class="flex justify-between items-center text-[13px] mb-1.5"><span class="text-[color:var(--muted)]">FPS</span><span id="h-y" class="mono font-bold">0</span></div>
+            <div class="flex justify-between items-center text-[13px]"><span class="text-[color:var(--muted)]">Price</span><span id="h-z" class="mono font-bold text-[color:var(--good)]">$0</span></div>
+        </div>
+
+        <!-- Axis legend chip -->
+        <div class="absolute bottom-4 right-4 z-10 text-[10px] mono text-[color:var(--faint)] bg-[rgba(7,11,20,0.7)] border border-[color:var(--border)] rounded-lg px-3 py-2 leading-relaxed pointer-events-none">
+            <div>X &middot; Agents</div>
+            <div>Y &middot; FPS (log&#8322;)</div>
+            <div>Z &middot; Price</div>
+        </div>
+
+        <!-- Color / Shape legend -->
+        <div id="legend" class="absolute top-4 right-4 z-10 hud px-3.5 py-3 rounded-xl text-[11px] max-w-[200px] pointer-events-none"></div>
+
+        <div id="plot" class="absolute inset-0 w-full h-full"></div>
+    </main>
+
+    <!-- ORTHOGONAL 2D VIEWS -->
+    <section id="ortho" class="panel rounded-2xl overflow-hidden hidden">
+        <div class="flex items-center justify-between px-5 py-3.5 border-b border-[color:var(--border-soft)]">
+            <h3 class="text-sm font-semibold tracking-tight flex items-center gap-2">
+                <span class="dot" style="background:var(--accent)"></span>
+                Orthogonal Projections
+            </h3>
+            <span class="text-[11px] mono text-[color:var(--faint)]">2D planes &middot; synced to selection</span>
+        </div>
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-px bg-[color:var(--border-soft)]">
+            <div class="bg-[color:var(--panel)] p-3">
+                <div class="text-[10px] mono uppercase tracking-[0.12em] text-[color:var(--muted)] mb-1 px-1">XY &middot; Agents / FPS</div>
+                <div id="plot-xy" class="w-full h-[240px]"></div>
+            </div>
+            <div class="bg-[color:var(--panel)] p-3">
+                <div class="text-[10px] mono uppercase tracking-[0.12em] text-[color:var(--muted)] mb-1 px-1">YZ &middot; FPS / Price</div>
+                <div id="plot-yz" class="w-full h-[240px]"></div>
+            </div>
+            <div class="bg-[color:var(--panel)] p-3">
+                <div class="text-[10px] mono uppercase tracking-[0.12em] text-[color:var(--muted)] mb-1 px-1">XZ &middot; Agents / Price</div>
+                <div id="plot-zx" class="w-full h-[240px]"></div>
+            </div>
+        </div>
+    </section>
+
+    <!-- DETAILS CARD -->
+    <section id="card" class="panel rounded-2xl min-h-[150px] flex flex-col justify-center p-5">
+        <div id="c-empty" class="text-center text-[color:var(--muted)] text-sm py-4">
+            <svg class="w-7 h-7 mx-auto mb-2.5 text-[color:var(--faint)]" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="1.6"><path stroke-linecap="round" stroke-linejoin="round" d="M15 15l-2 5L9 9l11 4-5 2zm0 0l5 5M7.188 2.239l.777 2.897M5.136 7.965l-2.898-.777M13.95 4.05l-2.122 2.122m-5.657 5.656l-2.12 2.122"></path></svg>
+            Select a node on the matrix to extract full specifications.
+        </div>
+
+        <div id="c-active" class="hidden w-full">
+            <div class="flex flex-wrap justify-between items-end gap-3 border-b border-[color:var(--border-soft)] pb-4 mb-4">
+                <div>
+                    <div class="flex gap-2 mb-2">
+                        <span id="c-badge-type" class="badge">Type</span>
+                        <span id="c-badge-cond" class="badge">Cond</span>
+                        <span id="c-badge-own" class="badge badge-accent">Owned</span>
+                    </div>
+                    <h2 id="c-name" class="text-xl md:text-2xl font-bold tracking-tight">System Name</h2>
+                    <p id="c-gpu" class="text-xs text-[color:var(--muted)] mt-1 mono">GPU vendor</p>
+                </div>
+                <div class="text-right">
+                    <div class="text-[10px] uppercase tracking-[0.14em] text-[color:var(--faint)] mb-0.5">Retail</div>
+                    <div id="c-price" class="text-3xl mono font-bold text-[color:var(--good)]">$0</div>
+                </div>
+            </div>
+
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-3 text-center">
+                <div class="stat-tile p-3.5">
+                    <div class="text-[10px] text-[color:var(--faint)] uppercase tracking-[0.1em] mb-1.5">Concurrent Agents</div>
+                    <div id="c-agents" class="mono text-xl font-bold">0</div>
+                </div>
+                <div class="stat-tile p-3.5">
+                    <div class="text-[10px] text-[color:var(--faint)] uppercase tracking-[0.1em] mb-1.5">Raw FPS</div>
+                    <div id="c-fps" class="mono text-xl font-bold">0</div>
+                </div>
+                <div class="stat-tile p-3.5">
+                    <div class="text-[10px] text-[color:var(--faint)] uppercase tracking-[0.1em] mb-1.5">Survivability</div>
+                    <div id="c-surv" class="mono text-xl font-bold">0</div>
+                </div>
+                <div class="stat-tile p-3.5" style="border-color: rgba(56,189,248,0.3); background: rgba(56,189,248,0.07);">
+                    <div class="text-[10px] text-[color:var(--accent)] uppercase tracking-[0.1em] mb-1.5">Value (Mem/$)</div>
+                    <div id="c-val" class="mono text-xl font-bold text-[color:var(--accent)]">0</div>
+                </div>
+            </div>
+
+            <!-- Detailed specs + AI insight -->
+            <div id="c-specs" class="hidden flex-wrap gap-2 mt-4 text-[11px] mono"></div>
+            <p id="c-summary" class="hidden text-[13px] leading-relaxed text-[color:var(--muted)] mt-4 p-3.5 rounded-xl bg-[color:var(--panel-2)] border border-[color:var(--border-soft)]"></p>
+
+            <div class="flex flex-wrap items-center gap-2.5 mt-4 pt-4 border-t border-[color:var(--border-soft)]">
+                <a id="c-buy" class="clink clink-buy" href="#" target="_blank" rel="noopener noreferrer">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z"></path></svg>
+                    <span id="c-buy-label">Buy &middot; Best Price</span>
+                </a>
+                <a id="c-rev1" class="clink clink-rev" href="#" target="_blank" rel="noopener noreferrer">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.196-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z"></path></svg>
+                    <span>Reviews</span>
+                </a>
+                <a id="c-rev2" class="clink clink-rev" href="#" target="_blank" rel="noopener noreferrer">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"></path></svg>
+                    <span>Video Reviews</span>
+                </a>
+            </div>
+        </div>
+    </section>
+
+    <!-- DATA TABLE -->
+    <section class="panel rounded-2xl overflow-hidden">
+        <div class="flex items-center justify-between px-5 py-3.5 border-b border-[color:var(--border-soft)]">
+            <h3 class="text-sm font-semibold tracking-tight flex items-center gap-2">
+                <span class="dot" style="background:var(--accent)"></span>
+                Full Dataset
+            </h3>
+            <div class="flex items-center gap-3">
+                <span id="dt-count" class="text-[11px] mono text-[color:var(--muted)]">0 systems</span>
+                <button id="dt-toggle" type="button" class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-[color:var(--border)] bg-[color:var(--panel-2)] text-[color:var(--text)] text-[11px] font-semibold transition hover:border-[color:var(--accent)] hover:text-[color:var(--accent)]">
+                    <svg id="dt-toggle-icon" class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"/></svg>
+                    <span id="dt-toggle-label">Hide</span>
+                </button>
+            </div>
+        </div>
+        <div id="dt-body-wrap" class="dt-wrap" style="max-height: 360px; overflow-y: auto;">
+            <table class="dt">
+                <thead>
+                    <tr>
+                        <th data-sort="name">System</th>
+                        <th data-sort="type">Type</th>
+                        <th data-sort="condition">Cond</th>
+                        <th data-sort="agents" class="num">Agents</th>
+                        <th data-sort="fps" class="num">FPS</th>
+                        <th data-sort="z" class="num">Price</th>
+                        <th data-sort="survivability" class="num">Surv</th>
+                        <th data-sort="mem_per_dollar" class="num">Mem/$</th>
+                        <th data-sort="owned">Fleet</th>
+                    </tr>
+                </thead>
+                <tbody id="dt-body"></tbody>
+            </table>
+        </div>
+    </section>
+
+    <footer class="text-center text-[11px] text-[color:var(--faint)] mono pb-2">
+        Fleet Matrix &middot; 3D telemetry visualizer
+    </footer>
+  </div>
+
+    <script>
+        // Bundled sample data (new schema) — used when Airtable env vars are missing
+        // so the preview renders without configuration.
+        function mkPurchases(name, price) {
+            const q = encodeURIComponent(name);
+            return [
+                {merchant: 'Amazon', url: 'https://www.amazon.com/s?k=' + q, price: price},
+                {merchant: 'Newegg', url: 'https://www.newegg.com/p/pl?d=' + q, price: Math.round(price * 1.04)},
+                {merchant: 'Best Buy', url: 'https://www.bestbuy.com/site/searchpage.jsp?st=' + q, price: Math.round(price * 1.08)}
+            ];
+        }
+        function mkReviews(name) {
+            const q = encodeURIComponent(name + ' sustained thermals review');
+            return [
+                {title: 'Sustained load & thermals', url: 'https://www.google.com/search?q=' + q},
+                {title: 'Local LLM throughput', url: 'https://www.google.com/search?q=' + encodeURIComponent(name + ' local LLM benchmark')},
+                {title: 'Video teardown', url: 'https://www.youtube.com/results?search_query=' + encodeURIComponent(name + ' review')}
+            ];
+        }
+        function sample(o) {
+            return Object.assign({
+                cpu: '', gpu_model: '', vram: 0, ram: 0, ram_type: '', storage: '', g3d: 0,
+                purchases: mkPurchases(o.name, o.z), reviews: mkReviews(o.name)
+            }, o);
+        }
+        const SAMPLE = [
+            sample({name: 'ASUS TUF A15', agents: 4, fps: 95, z: 429, survivability: 4, mem_per_dollar: 0.037, type: 'Laptop', owned: 'No', gpu: 'NVIDIA', gpu_model: 'RTX 4060 Laptop', vram: 8, ram: 16, ram_type: 'DDR5-4800', storage: '1TB NVMe SSD', cpu: 'AMD Ryzen 7 7735HS', g3d: 6300, condition: 'New'}),
+            sample({name: 'Acer Nitro 5', agents: 4, fps: 140, z: 699, survivability: 3, mem_per_dollar: 0.022, type: 'Laptop', owned: 'No', gpu: 'NVIDIA', gpu_model: 'RTX 4060 Laptop', vram: 8, ram: 16, ram_type: 'DDR5-5600', storage: '512GB NVMe SSD', cpu: 'Intel Core i7-13700H', g3d: 9300, condition: 'New'}),
+            sample({name: 'Lenovo LOQ 15', agents: 6, fps: 220, z: 799, survivability: 3, mem_per_dollar: 0.020, type: 'Laptop', owned: 'No', gpu: 'NVIDIA', gpu_model: 'RTX 4060 Laptop', vram: 8, ram: 16, ram_type: 'DDR5-5600', storage: '1TB NVMe SSD', cpu: 'Intel Core i7-13650HX', g3d: 14600, condition: 'New'}),
+            sample({name: 'iBUYPOWER TraceMesh', agents: 8, fps: 300, z: 829, survivability: 5, mem_per_dollar: 0.019, type: 'Desktop', owned: 'No', gpu: 'NVIDIA', gpu_model: 'RTX 4060', vram: 8, ram: 16, ram_type: 'DDR5-5600', storage: '1TB NVMe SSD', cpu: 'AMD Ryzen 5 5600', g3d: 20000, condition: 'New'}),
+            sample({name: 'HP Omen 25L', agents: 8, fps: 280, z: 999, survivability: 4, mem_per_dollar: 0.016, type: 'Desktop', owned: 'No', gpu: 'NVIDIA', gpu_model: 'RTX 4060 Ti', vram: 16, ram: 16, ram_type: 'DDR5-5600', storage: '1TB NVMe SSD', cpu: 'Intel Core i7-13700F', g3d: 18700, condition: 'New'}),
+            sample({name: 'Lenovo Legion Tower 5', agents: 12, fps: 350, z: 1199, survivability: 5, mem_per_dollar: 0.026, type: 'Desktop', owned: 'No', gpu: 'NVIDIA', gpu_model: 'RTX 4070', vram: 12, ram: 32, ram_type: 'DDR5-5600', storage: '1TB NVMe SSD', cpu: 'AMD Ryzen 7 7700', g3d: 23400, condition: 'New'}),
+            sample({name: 'Alienware Aurora R16', agents: 24, fps: 700, z: 3499, survivability: 5, mem_per_dollar: 0.018, type: 'Desktop', owned: 'No', gpu: 'NVIDIA', gpu_model: 'RTX 4080 Super', vram: 16, ram: 48, ram_type: 'DDR5-5600', storage: '2TB NVMe SSD', cpu: 'Intel Core i9-14900KF', g3d: 34800, condition: 'New'}),
+            sample({name: 'MSI Titan 18 HX', agents: 32, fps: 520, z: 4999, survivability: 4, mem_per_dollar: 0.025, type: 'Laptop', owned: 'No', gpu: 'NVIDIA', gpu_model: 'RTX 4090 Laptop', vram: 16, ram: 64, ram_type: 'DDR5-5600', storage: '2TB NVMe SSD', cpu: 'Intel Core i9-14900HX', g3d: 24600, condition: 'New'})
+        ];
+
+        // Live dataset (populated from /api/hardware, falls back to SAMPLE)
+        let db = SAMPLE.slice();
+
+        // Element Bindings
+        const els = {
+            ft: document.getElementById('f-type'), fc: document.getElementById('f-cond'),
+            mc: document.getElementById('m-color'), ms: document.getElementById('m-shape'),
+            mp: document.getElementById('m-proj'),
+            mr: document.getElementById('m-range'),
+            mg: document.getElementById('m-grades'),
+            gradeEditor: document.getElementById('grade-editor'),
+            gradeInputs: document.getElementById('grade-inputs'),
+            plot: document.getElementById('plot'),
+            legend: document.getElementById('legend'),
+            hud: document.getElementById('live-hud'), hx: document.getElementById('h-x'), hy: document.getElementById('h-y'), hz: document.getElementById('h-z'),
+            cEmpty: document.getElementById('c-empty'), cAct: document.getElementById('c-active'),
+            cn: document.getElementById('c-name'), cp: document.getElementById('c-price'),
+            ca: document.getElementById('c-agents'), cf: document.getElementById('c-fps'),
+            cs: document.getElementById('c-surv'), cv: document.getElementById('c-val'),
+            cGpu: document.getElementById('c-gpu'),
+            cSpecs: document.getElementById('c-specs'), cSummary: document.getElementById('c-summary'),
+            bType: document.getElementById('c-badge-type'), bCond: document.getElementById('c-badge-cond'), bOwn: document.getElementById('c-badge-own'),
+            buy: document.getElementById('c-buy'), buyLabel: document.getElementById('c-buy-label'),
+            rev1: document.getElementById('c-rev1'), rev2: document.getElementById('c-rev2'),
+            dtBody: document.getElementById('dt-body'), dtCount: document.getElementById('dt-count'),
+            dtToggle: document.getElementById('dt-toggle'), dtToggleLabel: document.getElementById('dt-toggle-label'),
+            dtToggleIcon: document.getElementById('dt-toggle-icon'), dtBodyWrap: document.getElementById('dt-body-wrap'),
+            srcDot: document.getElementById('src-dot'), srcLabel: document.getElementById('src-label'), srcPill: document.getElementById('src-pill')
+        };
+
+        // Selection + sort state
+        let selectedName = null;
+        let sortKey = 'z', sortDir = 1;
+
+        const palette = ['#38bdf8', '#34d399', '#f59e0b', '#f87171', '#a78bfa', '#f472b6', '#22d3ee'];
+        const shapes = ['circle', 'square', 'diamond', 'cross', 'x'];
+
+        // Grade price planes: ascending price thresholds on the Z axis
+        const grades = [
+            { key: 'C',   price: 500,  color: '#94a3b8' },
+            { key: 'B',   price: 900,  color: '#22d3ee' },
+            { key: 'A',   price: 1500, color: '#34d399' },
+            { key: 'A+',  price: 2200, color: '#a3e635' },
+            { key: 'AA',  price: 3200, color: '#f59e0b' }
+        ];
+
+        // Build the editable grade-price inputs
+        function buildGradeInputs() {
+            els.gradeInputs.innerHTML = grades.map((g, i) => `
+                <div>
+                    <label class="flex items-center gap-1.5 text-[11px] font-semibold mb-1" style="color:${g.color}">
+                        <span class="dot" style="background:${g.color}"></span>${g.key}
+                    </label>
+                    <input type="number" data-grade="${i}" value="${g.price}" min="0" max="5200" step="50"
+                        class="w-full bg-[color:var(--panel-2)] border border-[color:var(--border)] rounded-lg px-2.5 py-1.5 text-[13px] mono text-[color:var(--text)] focus:outline-none focus:border-[color:var(--accent)]">
+                </div>
+            `).join('');
+            els.gradeInputs.querySelectorAll('input[data-grade]').forEach(inp => {
+                inp.addEventListener('input', () => {
+                    grades[Number(inp.dataset.grade)].price = Number(inp.value) || 0;
+                    draw();
+                });
+            });
+        }
+
+        // Axis range state (fps stored as log2 exponents)
+        const rng = {
+            agents: { lo: 0, hi: 34, min: 0, max: 34 },
+            fps:    { lo: 3, hi: 10, min: 3, max: 10 },
+            price:  { lo: 0, hi: 5200, min: 0, max: 5200 }
+        };
+        const rngEl = {
+            agents: document.getElementById('rt-agents'),
+            fps: document.getElementById('rt-fps'),
+            price: document.getElementById('rt-price')
+        };
+
+        function fmtFps(exp) { return Math.round(Math.pow(2, exp)).toString(); }
+
+        function syncSlider(axis) {
+            const r = rng[axis], track = rngEl[axis];
+            const fill = track.querySelector('.rng-fill');
+            const span = r.max - r.min || 1;
+            const loPct = ((r.lo - r.min) / span) * 100;
+            const hiPct = ((r.hi - r.min) / span) * 100;
+            fill.style.left = loPct + '%';
+            fill.style.width = (hiPct - loPct) + '%';
+            if (axis === 'fps') {
+                document.getElementById('rv-fps-lo').innerText = fmtFps(r.lo);
+                document.getElementById('rv-fps-hi').innerText = fmtFps(r.hi);
+            } else {
+                document.getElementById('rv-' + axis + '-lo').innerText = r.lo;
+                document.getElementById('rv-' + axis + '-hi').innerText = r.hi;
+            }
+        }
+
+        // SVG glyph for each Plotly marker symbol (matches shapes[] order)
+        function shapeGlyph(symbol, color) {
+            const c = color || 'var(--text)';
+            const s = { width: 14, height: 14 };
+            switch (symbol) {
+                case 'square':  return `<svg width="${s.width}" height="${s.height}" viewBox="0 0 16 16"><rect x="3" y="3" width="10" height="10" rx="1.5" fill="${c}" stroke="rgba(7,11,20,0.85)" stroke-width="1"/></svg>`;
+                case 'diamond': return `<svg width="${s.width}" height="${s.height}" viewBox="0 0 16 16"><path d="M8 2 L14 8 L8 14 L2 8 Z" fill="${c}" stroke="rgba(7,11,20,0.85)" stroke-width="1"/></svg>`;
+                case 'cross':   return `<svg width="${s.width}" height="${s.height}" viewBox="0 0 16 16"><path d="M6 2 h4 v4 h4 v4 h-4 v4 h-4 v-4 h-4 v-4 h4 Z" fill="${c}" stroke="rgba(7,11,20,0.85)" stroke-width="1"/></svg>`;
+                case 'x':       return `<svg width="${s.width}" height="${s.height}" viewBox="0 0 16 16"><path d="M4 2 L8 6 L12 2 L14 4 L10 8 L14 12 L12 14 L8 10 L4 14 L2 12 L6 8 L2 4 Z" fill="${c}" stroke="rgba(7,11,20,0.85)" stroke-width="0.8"/></svg>`;
+                default:        return `<svg width="${s.width}" height="${s.height}" viewBox="0 0 16 16"><circle cx="8" cy="8" r="5.5" fill="${c}" stroke="rgba(7,11,20,0.85)" stroke-width="1"/></svg>`;
+            }
+        }
+
+        const modeNames = {
+            value: 'Mem / $', type: 'Type', condition: 'Condition',
+            survivability: 'Survivability', form_factor: 'Form Factor',
+            owned: 'Ownership', none: 'Uniform'
+        };
+
+        // Render the color + shape legend reflecting the active encoders
+        function renderLegend(cMode, sMode, uCols, uShps) {
+            let html = '';
+
+            // COLOR section
+            html += `<div class="text-[9px] uppercase tracking-[0.14em] text-[color:var(--accent)] font-bold mb-1.5">Color &middot; ${modeNames[cMode] || cMode}</div>`;
+            if (cMode === 'value') {
+                html += `<div class="flex items-center gap-2 mb-1">
+                    <span style="display:inline-block;width:54px;height:10px;border-radius:3px;background:linear-gradient(90deg,#440154,#31688e,#35b779,#fde725)"></span>
+                    <span class="mono text-[color:var(--muted)] text-[9px]">low &rarr; high</span>
+                </div>`;
+            } else if (cMode === 'none') {
+                html += `<div class="flex items-center gap-2 mb-2">${shapeGlyph('circle', 'rgba(138,151,176,0.5)')}<span class="text-[color:var(--muted)]">All systems</span></div>`;
+            } else {
+                html += '<div class="flex flex-col gap-1 mb-2">' + uCols.map((v, i) =>
+                    `<div class="flex items-center gap-2"><span style="display:inline-block;width:11px;height:11px;border-radius:3px;background:${palette[i % palette.length]}"></span><span class="text-[color:var(--text)]">${v}</span></div>`
+                ).join('') + '</div>';
+            }
+
+            // SHAPE section
+            html += `<div class="text-[9px] uppercase tracking-[0.14em] text-[color:var(--good)] font-bold mb-1.5 mt-1 pt-2 border-t border-[rgba(56,189,248,0.18)]">Shape &middot; ${modeNames[sMode] || sMode}</div>`;
+            if (sMode === 'none') {
+                html += `<div class="flex items-center gap-2">${shapeGlyph('circle')}<span class="text-[color:var(--muted)]">All systems</span></div>`;
+            } else {
+                html += '<div class="flex flex-col gap-1">' + uShps.map((v, i) =>
+                    `<div class="flex items-center gap-2">${shapeGlyph(shapes[i % shapes.length])}<span class="text-[color:var(--text)]">${v}</span></div>`
+                ).join('') + '</div>';
+            }
+
+            els.legend.innerHTML = html;
+        }
+
+        function draw() {
+            // Apply Filters
+            let data = db.filter(d =>
+                (els.ft.value === 'All' || d.type === els.ft.value) &&
+                (els.fc.value === 'All' || d.condition === els.fc.value)
+            );
+
+            // Apply axis range filters (fps compared in log2 space)
+            data = data.filter(d =>
+                d.agents >= rng.agents.lo && d.agents <= rng.agents.hi &&
+                Math.log2(d.fps) >= rng.fps.lo && Math.log2(d.fps) <= rng.fps.hi &&
+                d.z >= rng.price.lo && d.z <= rng.price.hi
+            );
+
+            if(!data.length) {
+                Plotly.purge(els.plot);
+                return;
+            }
+
+            let cMode = els.mc.value, sMode = els.ms.value;
+            let projMode = els.mp.value; // 'off' | 'walls' | 'panels'
+            let wallsOn = projMode === 'walls';
+            let panelsOn = projMode === 'panels';
+            let dynamic = els.mr.value === 'dynamic';
+            let gradesOn = els.mg.value === 'on';
+            els.gradeEditor.classList.toggle('hidden', !gradesOn);
+
+            // Coordinate plane ranges: static keeps fixed walls, dynamic rescales to slider range
+            const xRange = dynamic ? [rng.agents.lo, rng.agents.hi] : [0, 34];
+            const yRange = dynamic ? [rng.fps.lo, rng.fps.hi] : [Math.log2(8), Math.log2(1024)];
+            const zRange = dynamic ? [rng.price.lo, rng.price.hi] : [0, 5200];
+            let uCols = cMode !== 'value' && cMode !== 'none' ? [...new Set(data.map(d => d[cMode]))] : [];
+            let uShps = sMode !== 'none' ? [...new Set(data.map(d => d[sMode]))] : [];
+
+            renderLegend(cMode, sMode, uCols, uShps);
+
+            let mC=[], mS=[], mL=[];
+
+            data.forEach(d => {
+                // Determine Shape
+                mS.push(sMode === 'none' ? 'circle' : shapes[uShps.indexOf(d[sMode]) % shapes.length]);
+
+                // Determine Color
+                if(cMode === 'value') {
+                    mC.push(d.mem_per_dollar);
+                    mL.push('rgba(7, 11, 20, 0.85)');
+                }
+                else if(cMode === 'none') {
+                    mC.push('rgba(138, 151, 176, 0.18)');
+                    mL.push('rgba(231, 236, 245, 0.35)');
+                }
+                else {
+                    mC.push(palette[uCols.indexOf(d[cMode]) % palette.length]);
+                    mL.push('rgba(7, 11, 20, 0.85)');
+                }
+            });
+
+            // True Log2 scaling for Y-axis (Plotly uses log10 natively, so we map the data visually)
+            const log2Fps = data.map(d => Math.log2(d.fps));
+
+            const axisCommon = {
+                gridcolor: 'rgba(40, 56, 88, 0.55)',
+                zerolinecolor: 'rgba(71, 85, 105, 0.7)',
+                showbackground: true,
+                backgroundcolor: 'rgba(13, 20, 36, 0.35)',
+                tickfont: { color: '#8a97b0', size: 10, family: 'JetBrains Mono, monospace' },
+                titlefont: { color: '#cdd6e6', size: 12, family: 'Inter, sans-serif' },
+                linecolor: 'rgba(40, 56, 88, 0.8)'
+            };
+
+            // Build horizontal grade price planes (constant Z = price threshold)
+            const gradePlanes = [];
+            if (gradesOn) {
+                const xLo = xRange[0], xHi = xRange[1], yLo = yRange[0], yHi = yRange[1];
+                grades.forEach(g => {
+                    if (g.price < zRange[0] || g.price > zRange[1]) return;
+                    gradePlanes.push({
+                        type: 'mesh3d',
+                        x: [xLo, xHi, xHi, xLo],
+                        y: [yLo, yLo, yHi, yHi],
+                        z: [g.price, g.price, g.price, g.price],
+                        i: [0, 0], j: [1, 2], k: [2, 3],
+                        color: g.color,
+                        opacity: 0.13,
+                        hoverinfo: 'text',
+                        text: `Grade ${g.key} · $${g.price.toLocaleString()}`,
+                        flatshading: true,
+                        showscale: false
+                    });
+                    // Label + edge line at the plane corner
+                    gradePlanes.push({
+                        type: 'scatter3d',
+                        mode: 'lines+text',
+                        x: [xLo, xHi, xHi, xLo, xLo],
+                        y: [yLo, yLo, yHi, yHi, yLo],
+                        z: [g.price, g.price, g.price, g.price, g.price],
+                        line: { color: g.color, width: 2 },
+                        text: ['', '', `  ${g.key} ($${g.price.toLocaleString()})`, '', ''],
+                        textposition: 'top right',
+                        textfont: { color: g.color, size: 10, family: 'JetBrains Mono, monospace' },
+                        hoverinfo: 'skip',
+                        showlegend: false
+                    });
+                });
+            }
+
+            Plotly.newPlot(els.plot, [
+                {
+                    type: 'scatter3d',
+                    mode: 'markers',
+                    x: data.map(d => d.agents),
+                    y: log2Fps,
+                    z: data.map(d => d.z),
+                    customdata: data,
+                    hoverinfo: 'none',
+                    marker: {
+                        size: 9,
+                        symbol: mS,
+                        color: mC,
+                        colorscale: cMode === 'value' ? 'Viridis' : null,
+                        showscale: cMode === 'value',
+                        colorbar: cMode === 'value' ? {
+                            title: { text: 'Mem/$', font: { color: '#8a97b0', size: 11, family: 'Inter, sans-serif' } },
+                            tickfont: { color: '#8a97b0', size: 9, family: 'JetBrains Mono, monospace' },
+                            thickness: 12,
+                            len: 0.55,
+                            x: 1.0,
+                            outlinewidth: 0,
+                            bgcolor: 'rgba(0,0,0,0)'
+                        } : undefined,
+                        opacity: cMode === 'none' ? 1 : 0.95,
+                        line: {color: mL, width: 1},
+                        projection: {
+                            x: { show: wallsOn, opacity: 0.4, scale: 0.65 },
+                            y: { show: wallsOn, opacity: 0.4, scale: 0.65 },
+                            z: { show: wallsOn, opacity: 0.55, scale: 0.7 }
+                        }
+                    }
+                },
+                // Optional Reference Threshold Line
+                {
+                    type: 'scatter3d',
+                    mode: 'lines',
+                    x: [4, 4, null, 0, 32],
+                    y: [Math.log2(8), Math.log2(1024), null, Math.log2(144), Math.log2(144)],
+                    z: [0, 0, null, 0, 0],
+                    line: {color: 'rgba(248, 113, 113, 0.45)', width: 2, dash: 'dot'},
+                    hoverinfo: 'none'
+                },
+                // Selection highlight marker (trace index 2)
+                {
+                    type: 'scatter3d',
+                    mode: 'markers',
+                    x: [], y: [], z: [],
+                    hoverinfo: 'none',
+                    showlegend: false,
+                    marker: {
+                        size: 16,
+                        symbol: 'circle-open',
+                        color: '#34d399',
+                        line: { color: '#34d399', width: 3 },
+                        opacity: 1
+                    }
+                },
+                // Grade price planes (trace index 3+)
+                ...gradePlanes
+            ], {
+                paper_bgcolor: 'rgba(0,0,0,0)',
+                plot_bgcolor: 'rgba(0,0,0,0)',
+                font: { family: 'Inter, sans-serif', color: '#e7ecf5' },
+                margin: {l: 0, r: 0, t: 0, b: 0},
+                showlegend: false,
+                scene: {
+                    xaxis: Object.assign({title: 'Agents', range: xRange}, axisCommon),
+                    yaxis: Object.assign({
+                        title: 'FPS (Log2)',
+                        range: yRange,
+                        tickvals: [3, 4, 5, 6, 7, 8, 9, 10],
+                        ticktext: ['8', '16', '32', '64', '128', '256', '512', '1024']
+                    }, axisCommon),
+                    zaxis: Object.assign({title: 'Price ($)', range: zRange}, axisCommon),
+                    camera: { eye: {x: 1.6, y: -1.6, z: 0.55} },
+                    aspectmode: 'cube'
+                }
+            }, {responsive: true, displayModeBar: false}).then(() => {
+
+                els.plot.on('plotly_hover', e => {
+                    let p = e.points[0].customdata;
+                    if(!p) return;
+                    els.hx.innerText = p.agents;
+                    els.hy.innerText = p.fps;
+                    els.hz.innerText = '$' + p.z.toLocaleString();
+                    els.hud.classList.replace('opacity-0', 'opacity-100');
+                });
+
+                els.plot.on('plotly_unhover', () => {
+                    els.hud.classList.replace('opacity-100', 'opacity-0');
+                });
+
+                els.plot.on('plotly_click', e => {
+                    let p = e.points[0].customdata;
+                    if(!p) return;
+                    selectSystem(p.name);
+                });
+
+                // Re-apply highlight if a selection survives this redraw
+                if (selectedName) {
+                    const sp = db.find(d => d.name === selectedName);
+                    if (sp) highlightPlot(sp);
+                }
+            });
+
+            // Orthogonal 2D panels (separate section below the main plot)
+            const orthoSec = document.getElementById('ortho');
+            if (panelsOn) {
+                orthoSec.classList.remove('hidden');
+                drawOrtho(data, mC, mS, mL, cMode, log2Fps);
+            } else {
+                orthoSec.classList.add('hidden');
+            }
+        }
+
+        // Render three synced 2D orthogonal scatter planes (XY, YZ, ZX)
+        function drawOrtho(data, mC, mS, mL, cMode, log2Fps) {
+            const ax = {
+                gridcolor: 'rgba(40, 56, 88, 0.55)',
+                zerolinecolor: 'rgba(71, 85, 105, 0.7)',
+                tickfont: { color: '#8a97b0', size: 9, family: 'JetBrains Mono, monospace' },
+                titlefont: { color: '#cdd6e6', size: 11, family: 'Inter, sans-serif' },
+                linecolor: 'rgba(40, 56, 88, 0.8)',
+                showline: true
+            };
+            const baseLayout = {
+                paper_bgcolor: 'rgba(0,0,0,0)',
+                plot_bgcolor: 'rgba(13, 20, 36, 0.35)',
+                font: { family: 'Inter, sans-serif', color: '#e7ecf5' },
+                margin: { l: 46, r: 12, t: 8, b: 38 },
+                showlegend: false,
+                hovermode: 'closest'
+            };
+            const cfg = { responsive: true, displayModeBar: false };
+            const marker = {
+                size: 8, symbol: mS, color: mC,
+                colorscale: cMode === 'value' ? 'Viridis' : null,
+                showscale: false,
+                opacity: cMode === 'none' ? 1 : 0.95,
+                line: { color: mL, width: 1 }
+            };
+            const fpsTicks = { tickvals: [3,4,5,6,7,8,9,10], ticktext: ['8','16','32','64','128','256','512','1024'] };
+
+            // XY: Agents (x) vs FPS-log2 (y)
+            Plotly.newPlot('plot-xy', [{
+                type: 'scattergl', mode: 'markers',
+                x: data.map(d => d.agents), y: log2Fps,
+                customdata: data, hoverinfo: 'none', marker
+            }], Object.assign({}, baseLayout, {
+                xaxis: Object.assign({ title: 'Agents', range: [0, 34] }, ax),
+                yaxis: Object.assign({ title: 'FPS', range: [Math.log2(8), Math.log2(1024)] }, ax, fpsTicks)
+            }), cfg).then(p => wireOrtho(p));
+
+            // YZ: FPS-log2 (x) vs Price (y)
+            Plotly.newPlot('plot-yz', [{
+                type: 'scattergl', mode: 'markers',
+                x: log2Fps, y: data.map(d => d.z),
+                customdata: data, hoverinfo: 'none', marker
+            }], Object.assign({}, baseLayout, {
+                xaxis: Object.assign({ title: 'FPS', range: [Math.log2(8), Math.log2(1024)] }, ax, fpsTicks),
+                yaxis: Object.assign({ title: 'Price ($)', range: [0, 5200] }, ax)
+            }), cfg).then(p => wireOrtho(p));
+
+            // XZ: Agents (x) vs Price (y)
+            Plotly.newPlot('plot-zx', [{
+                type: 'scattergl', mode: 'markers',
+                x: data.map(d => d.agents), y: data.map(d => d.z),
+                customdata: data, hoverinfo: 'none', marker
+            }], Object.assign({}, baseLayout, {
+                xaxis: Object.assign({ title: 'Agents', range: [0, 34] }, ax),
+                yaxis: Object.assign({ title: 'Price ($)', range: [0, 5200] }, ax)
+            }), cfg).then(p => wireOrtho(p));
+        }
+
+        // Hook hover (HUD) + click (select) into a 2D ortho plot
+        function wireOrtho(plotEl) {
+            plotEl.on('plotly_hover', e => {
+                const p = e.points[0].customdata;
+                if(!p) return;
+                els.hx.innerText = p.agents;
+                els.hy.innerText = p.fps;
+                els.hz.innerText = '$' + p.z.toLocaleString();
+                els.hud.classList.replace('opacity-0', 'opacity-100');
+            });
+            plotEl.on('plotly_unhover', () => els.hud.classList.replace('opacity-100', 'opacity-0'));
+            plotEl.on('plotly_click', e => {
+                const p = e.points[0].customdata;
+                if(p) selectSystem(p.name);
+            });
+        }
+
+        // Build search/retailer links from the system name
+        // Central selection: syncs the details card and the table highlight
+        function selectSystem(name) {
+            selectedName = name;
+            const p = db.find(d => d.name === name);
+            if (!p) return;
+
+            els.cEmpty.classList.add('hidden');
+            els.cAct.classList.remove('hidden');
+
+            els.cn.innerText = p.name;
+            els.cp.innerText = '$' + p.z.toLocaleString();
+            els.ca.innerText = p.agents;
+            els.cf.innerText = p.fps;
+            els.cs.innerText = p.survivability + '/5';
+            els.cv.innerText = (p.mem_per_dollar || 0).toFixed(3);
+            // GPU line + metric derivations
+            const gpuLabel = [p.gpu, p.gpu_model].filter(Boolean).join(' ') || p.gpu || 'Integrated';
+            const deriv = `agents=floor(${p.vram || 0}/2)=${p.agents} \u00b7 fps=floor(${p.g3d || 0}\u00d70.015)=${p.fps} \u00b7 mem/$=(${p.ram || 0}+${p.vram || 0})/${p.z}`;
+            els.cGpu.innerText = `${gpuLabel}  \u2014  ${deriv}`;
+
+            // Detailed spec chips (only show the ones that have data)
+            const storageLabel = p.storage || (p.storage_capacity_gb ? p.storage_capacity_gb + 'GB' : '');
+            const specs = [
+                ['CPU', p.cpu],
+                ['RAM', p.ram ? `${p.ram}GB ${p.ram_type || ''}`.trim() : ''],
+                ['VRAM', p.vram ? p.vram + 'GB' : ''],
+                ['Storage', storageLabel],
+                ['G3D Mark', p.g3d ? p.g3d.toLocaleString() : ''],
+                ['AI Rating', p.ai_suitability_rating],
+                ['Perf/$', p.price_performance_score ? p.price_performance_score.toFixed(1) : '']
+            ].filter(([, v]) => v != null && v !== '');
+            els.cSpecs.innerHTML = specs.map(([k, v]) =>
+                `<span class="px-2 py-1 rounded-md bg-[color:var(--panel-2)] border border-[color:var(--border-soft)]"><span class="text-[color:var(--faint)]">${k}</span> <span class="text-[color:var(--text)]">${v}</span></span>`
+            ).join('');
+            els.cSpecs.classList.toggle('hidden', specs.length === 0);
+            els.cSpecs.classList.toggle('flex', specs.length > 0);
+
+            // AI-generated hardware summary
+            if (p.hardware_summary) {
+                els.cSummary.innerText = p.hardware_summary;
+                els.cSummary.classList.remove('hidden');
+            } else {
+                els.cSummary.classList.add('hidden');
+            }
+
+            els.bType.innerText = p.type;
+            els.bCond.innerText = p.condition;
+            els.bOwn.innerText = p.owned === 'Yes' ? 'In Fleet' : 'Prospect';
+            els.bOwn.style.display = p.owned === 'Yes' ? '' : 'none';
+
+            // Buy link = lowest-priced purchase option; reviews = first two entries
+            const purchases = Array.isArray(p.purchases) ? p.purchases.filter(x => x && x.url) : [];
+            const cheapest = purchases.slice().sort((a, b) => (a.price || 1e9) - (b.price || 1e9))[0];
+            if (cheapest) {
+                els.buy.href = cheapest.url;
+                els.buy.style.display = '';
+                els.buyLabel.innerText = `Buy \u00b7 ${cheapest.merchant || 'Best'} \u00b7 $${Number(cheapest.price || p.z).toLocaleString()}`;
+            } else {
+                els.buy.style.display = 'none';
+            }
+
+            const reviews = Array.isArray(p.reviews) ? p.reviews.filter(x => x && x.url) : [];
+            [els.rev1, els.rev2].forEach((el, i) => {
+                const r = reviews[i];
+                if (r) {
+                    el.href = r.url;
+                    el.style.display = '';
+                    const labelSpan = el.querySelector('span');
+                    if (labelSpan) labelSpan.innerText = r.title || 'Review';
+                } else {
+                    el.style.display = 'none';
+                }
+            });
+
+            // Sync table highlight
+            els.dtBody.querySelectorAll('tr').forEach(tr => {
+                tr.classList.toggle('sel', tr.dataset.name === name);
+            });
+            const selRow = els.dtBody.querySelector('tr.sel');
+            if (selRow) selRow.scrollIntoView({block: 'nearest', behavior: 'smooth'});
+
+            // Highlight the matching point in the 3D plot
+            highlightPlot(p);
+        }
+
+        // Update the 3D plot's highlight trace (index 2) to ring the selected system
+        function highlightPlot(p) {
+            if (!els.plot || !els.plot.data || els.plot.data.length < 3) return;
+            Plotly.restyle(els.plot, {
+                x: [[p.agents]],
+                y: [[Math.log2(p.fps)]],
+                z: [[p.z]]
+            }, [2]);
+        }
+
+        // Render the data table (respects current filters + sort)
+        function renderTable() {
+            let rows = db.filter(d =>
+                (els.ft.value === 'All' || d.type === els.ft.value) &&
+                (els.fc.value === 'All' || d.condition === els.fc.value) &&
+                d.agents >= rng.agents.lo && d.agents <= rng.agents.hi &&
+                Math.log2(d.fps) >= rng.fps.lo && Math.log2(d.fps) <= rng.fps.hi &&
+                d.z >= rng.price.lo && d.z <= rng.price.hi
+            );
+            rows.sort((a, b) => {
+                let av = a[sortKey], bv = b[sortKey];
+                if (typeof av === 'string') return sortDir * av.localeCompare(bv);
+                return sortDir * (av - bv);
+            });
+
+            els.dtCount.innerText = rows.length + (rows.length === 1 ? ' system' : ' systems');
+            els.dtBody.innerHTML = rows.map(d => `
+                <tr data-name="${d.name.replace(/"/g, '&quot;')}" class="${d.name === selectedName ? 'sel' : ''}">
+                    <td>${d.name}</td>
+                    <td><span class="tag">${d.type}</span></td>
+                    <td>${d.condition}</td>
+                    <td class="num">${d.agents}</td>
+                    <td class="num">${d.fps}</td>
+                    <td class="num">$${d.z.toLocaleString()}</td>
+                    <td class="num">${d.survivability}/5</td>
+                    <td class="num">${d.mem_per_dollar.toFixed(3)}</td>
+                    <td>${d.owned === 'Yes' ? '<span class="tag" style="border-color:var(--accent);color:var(--accent)">Yes</span>' : '<span class="tag">No</span>'}</td>
+                </tr>
+            `).join('');
+
+            els.dtBody.querySelectorAll('tr').forEach(tr => {
+                tr.addEventListener('click', () => selectSystem(tr.dataset.name));
+            });
+
+            updateSortIndicators();
+        }
+
+        // Show an arrow on the active sort column
+        function updateSortIndicators() {
+            document.querySelectorAll('table.dt thead th').forEach(th => {
+                const arrow = th.dataset.sort === sortKey ? (sortDir === 1 ? ' \u2191' : ' \u2193') : '';
+                th.dataset.label = th.dataset.label || th.textContent.replace(/[\u2191\u2193]/g, '').trim();
+                th.innerHTML = th.dataset.label + (arrow ? `<span style="color:var(--accent)">${arrow}</span>` : '');
+                th.classList.toggle('active', th.dataset.sort === sortKey);
+            });
+        }
+
+        function drawAll() { draw(); renderTable(); }
+
+        [els.ft, els.fc, els.mc, els.ms, els.mp, els.mr, els.mg].forEach(e => e.addEventListener('change', drawAll));
+
+        // Column sorting
+        document.querySelectorAll('table.dt thead th').forEach(th => {
+            th.addEventListener('click', () => {
+                const key = th.dataset.sort;
+                if (sortKey === key) { sortDir *= -1; } else { sortKey = key; sortDir = 1; }
+                renderTable();
+            });
+        });
+
+        // Hide / show the table body
+        els.dtToggle.addEventListener('click', () => {
+            const hidden = els.dtBodyWrap.classList.toggle('hidden');
+            els.dtToggleLabel.innerText = hidden ? 'Show' : 'Hide';
+            els.dtToggleIcon.style.transform = hidden ? 'rotate(-90deg)' : 'rotate(0deg)';
+        });
+
+        // Dual-handle range sliders with crossover protection
+        document.querySelectorAll('.rng-track input[type=range]').forEach(input => {
+            input.addEventListener('input', () => {
+                const axis = input.dataset.axis, end = input.dataset.end;
+                const r = rng[axis];
+                let v = Number(input.value);
+                const step = Number(input.step) || 1;
+                if (end === 'lo') {
+                    if (v > r.hi - step) { v = r.hi - step; input.value = v; }
+                    r.lo = v;
+                } else {
+                    if (v < r.lo + step) { v = r.lo + step; input.value = v; }
+                    r.hi = v;
+                }
+                syncSlider(axis);
+                draw();
+                renderTable();
+            });
+        });
+
+        // Reset everything: filters, customizations, sliders, selection, sort
+        document.getElementById('btn-reset').addEventListener('click', () => {
+            // Selects back to defaults (first option)
+            els.ft.value = 'All';
+            els.fc.value = 'All';
+            els.mc.value = 'value';
+            els.ms.value = els.ms.options[0].value;
+            els.mp.value = 'off';
+            els.mr.value = 'dynamic';
+            els.mg.value = 'off';
+
+            // Sliders back to full extent
+            Object.keys(rng).forEach(axis => {
+                rng[axis].lo = rng[axis].min;
+                rng[axis].hi = rng[axis].max;
+                rngEl[axis].querySelectorAll('input[type=range]').forEach(inp => {
+                    inp.value = inp.dataset.end === 'lo' ? rng[axis].min : rng[axis].max;
+                });
+                syncSlider(axis);
+            });
+
+            // Clear selection + sort
+            selectedName = null;
+            sortKey = 'z'; sortDir = 1;
+            els.cAct.classList.add('hidden');
+            els.cEmpty.classList.remove('hidden');
+
+            draw();
+            renderTable();
+        });
+
+        // Initialize slider fills
+        Object.keys(rng).forEach(syncSlider);
+        buildGradeInputs();
+        draw();
+        renderTable();
+
+        // Update the data-source status pill
+        function setSource(state, message) {
+            const map = {
+                airtable: ['var(--good)', 'Airtable connected'],
+                sample:   ['var(--faint)', 'Sample data'],
+                loading:  ['var(--faint)', 'Loading\u2026'],
+                error:    ['var(--bad, #f87171)', 'Airtable error']
+            };
+            const [color, label] = map[state] || map.sample;
+            els.srcDot.style.background = color;
+            els.srcLabel.innerText = label;
+            els.srcPill.title = message || label;
+        }
+
+        // Fetch the live hardware dataset from the server route; fall back to SAMPLE
+        async function loadData() {
+            setSource('loading');
+            try {
+                const res = await fetch('/api/hardware', { cache: 'no-store' });
+                const data = await res.json();
+                if (data.source === 'airtable' && Array.isArray(data.records) && data.records.length) {
+                    db = data.records;
+                    setSource('airtable', `${db.length} records from Airtable`);
+                } else if (data.source === 'error') {
+                    setSource('error', data.message);
+                } else {
+                    setSource('sample', data.message || 'Using bundled sample data');
+                }
+            } catch (err) {
+                setSource('error', err && err.message ? err.message : 'Fetch failed');
+            }
+            // Re-render with whatever dataset we ended up with
+            draw();
+            renderTable();
+        }
+        loadData();
+
+        window.addEventListener('resize', () => Plotly.Plots.resize(els.plot));
+    </script>
+</body>
+</html>
