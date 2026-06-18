@@ -646,6 +646,29 @@
 
         function fmtFps(exp) { return Math.round(Math.pow(2, exp)).toString(); }
 
+        // Derive each axis min/max from the live dataset and rebuild the sliders.
+        // fps lives in log2 space; price is snapped to its step for reachable endpoints.
+        function computeRanges() {
+            if (!db.length) return;
+            const extents = {
+                agents: { vals: db.map(d => d.agents), step: 1, floor: Math.floor, ceil: Math.ceil },
+                fps:    { vals: db.map(d => Math.log2(d.fps)), step: 1, floor: Math.floor, ceil: Math.ceil },
+                price:  { vals: db.map(d => d.z), step: 50, floor: v => Math.floor(v / 50) * 50, ceil: v => Math.ceil(v / 50) * 50 }
+            };
+            Object.keys(extents).forEach(axis => {
+                const e = extents[axis], r = rng[axis];
+                let lo = e.floor(Math.min(...e.vals));
+                let hi = e.ceil(Math.max(...e.vals));
+                if (hi <= lo) hi = lo + e.step; // guard against a single-value axis
+                r.min = lo; r.max = hi; r.lo = lo; r.hi = hi;
+                rngEl[axis].querySelectorAll('input[type=range]').forEach(inp => {
+                    inp.min = lo; inp.max = hi; inp.step = e.step;
+                    inp.value = inp.dataset.end === 'lo' ? lo : hi;
+                });
+                syncSlider(axis);
+            });
+        }
+
         function syncSlider(axis) {
             const r = rng[axis], track = rngEl[axis];
             const fill = track.querySelector('.rng-fill');
@@ -742,9 +765,9 @@
             els.gradeEditor.classList.toggle('hidden', !gradesOn);
 
             // Coordinate plane ranges: static keeps fixed walls, dynamic rescales to slider range
-            const xRange = dynamic ? [rng.agents.lo, rng.agents.hi] : [0, 12];
-            const yRange = dynamic ? [rng.fps.lo, rng.fps.hi] : [Math.log2(8), Math.log2(1024)];
-            const zRange = dynamic ? [rng.price.lo, rng.price.hi] : [0, 5200];
+      const xRange = dynamic ? [rng.agents.lo, rng.agents.hi] : [rng.agents.min, rng.agents.max];
+      const yRange = dynamic ? [rng.fps.lo, rng.fps.hi] : [rng.fps.min, rng.fps.max];
+      const zRange = dynamic ? [rng.price.lo, rng.price.hi] : [rng.price.min, rng.price.max];
             let uCols = cMode !== 'value' && cMode !== 'none' ? [...new Set(data.map(d => d[cMode]))] : [];
             let uShps = sMode !== 'none' ? [...new Set(data.map(d => d[sMode]))] : [];
 
@@ -970,8 +993,8 @@
                 x: data.map(d => d.agents), y: log2Fps,
                 customdata: data, hoverinfo: 'none', marker
             }], Object.assign({}, baseLayout, {
-                xaxis: Object.assign({ title: 'Agents', range: [0, 12] }, ax),
-                yaxis: Object.assign({ title: 'FPS', range: [Math.log2(8), Math.log2(1024)] }, ax, fpsTicks)
+                xaxis: Object.assign({ title: 'Agents', range: [rng.agents.min, rng.agents.max] }, ax),
+                yaxis: Object.assign({ title: 'FPS', range: [rng.fps.min, rng.fps.max] }, ax, fpsTicks)
             }), cfg).then(p => wireOrtho(p));
 
             // YZ: FPS-log2 (x) vs Price (y)
@@ -980,8 +1003,8 @@
                 x: log2Fps, y: data.map(d => d.z),
                 customdata: data, hoverinfo: 'none', marker
             }], Object.assign({}, baseLayout, {
-                xaxis: Object.assign({ title: 'FPS', range: [Math.log2(8), Math.log2(1024)] }, ax, fpsTicks),
-                yaxis: Object.assign({ title: 'Price ($)', range: [0, 5200] }, ax)
+                xaxis: Object.assign({ title: 'FPS', range: [rng.fps.min, rng.fps.max] }, ax, fpsTicks),
+                yaxis: Object.assign({ title: 'Price ($)', range: [rng.price.min, rng.price.max] }, ax)
             }), cfg).then(p => wireOrtho(p));
 
             // XZ: Agents (x) vs Price (y)
@@ -990,8 +1013,8 @@
                 x: data.map(d => d.agents), y: data.map(d => d.z),
                 customdata: data, hoverinfo: 'none', marker
             }], Object.assign({}, baseLayout, {
-                xaxis: Object.assign({ title: 'Agents', range: [0, 12] }, ax),
-                yaxis: Object.assign({ title: 'Price ($)', range: [0, 5200] }, ax)
+                xaxis: Object.assign({ title: 'Agents', range: [rng.agents.min, rng.agents.max] }, ax),
+                yaxis: Object.assign({ title: 'Price ($)', range: [rng.price.min, rng.price.max] }, ax)
             }), cfg).then(p => wireOrtho(p));
         }
 
@@ -1226,7 +1249,8 @@
             renderTable();
         });
 
-        // Initialize slider fills
+        // Initialize slider extents + fills from the (sample) dataset
+        computeRanges();
         Object.keys(rng).forEach(syncSlider);
         buildGradeInputs();
         draw();
@@ -1263,7 +1287,8 @@
             } catch (err) {
                 setSource('error', err && err.message ? err.message : 'Fetch failed');
             }
-            // Re-render with whatever dataset we ended up with
+            // Re-derive axis extents from the dataset we ended up with, then render
+            computeRanges();
             draw();
             renderTable();
         }
