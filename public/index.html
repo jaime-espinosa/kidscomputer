@@ -686,6 +686,22 @@
             }
         }
 
+        // Apply a window/zoom selection (from a 2D panel) onto an axis filter,
+        // snapping outward to the slider step and keeping the handles in sync.
+        function applyWindow(axis, lo, hi) {
+            const r = rng[axis];
+            const inp = rngEl[axis].querySelector('input[type=range]');
+            const step = Number(inp && inp.step) || 1;
+            lo = Math.max(r.min, Math.floor(lo / step) * step);
+            hi = Math.min(r.max, Math.ceil(hi / step) * step);
+            if (hi <= lo) hi = Math.min(r.max, lo + step);
+            r.lo = lo; r.hi = hi;
+            rngEl[axis].querySelectorAll('input[type=range]').forEach(i => {
+                i.value = i.dataset.end === 'lo' ? lo : hi;
+            });
+            syncSlider(axis);
+        }
+
         // SVG glyph for each Plotly marker symbol (matches shapes[] order)
         function shapeGlyph(symbol, color) {
             const c = color || 'var(--text)';
@@ -993,9 +1009,9 @@
                 x: data.map(d => d.agents), y: log2Fps,
                 customdata: data, hoverinfo: 'none', marker
             }], Object.assign({}, baseLayout, {
-                xaxis: Object.assign({ title: 'Agents', range: [rng.agents.min, rng.agents.max] }, ax),
-                yaxis: Object.assign({ title: 'FPS', range: [rng.fps.min, rng.fps.max] }, ax, fpsTicks)
-            }), cfg).then(p => wireOrtho(p));
+                xaxis: Object.assign({ title: 'Agents', range: [rng.agents.lo, rng.agents.hi] }, ax),
+                yaxis: Object.assign({ title: 'FPS', range: [rng.fps.lo, rng.fps.hi] }, ax, fpsTicks)
+            }), cfg).then(p => wireOrtho(p, 'agents', 'fps'));
 
             // YZ: FPS-log2 (x) vs Price (y)
             Plotly.newPlot('plot-yz', [{
@@ -1003,9 +1019,9 @@
                 x: log2Fps, y: data.map(d => d.z),
                 customdata: data, hoverinfo: 'none', marker
             }], Object.assign({}, baseLayout, {
-                xaxis: Object.assign({ title: 'FPS', range: [rng.fps.min, rng.fps.max] }, ax, fpsTicks),
-                yaxis: Object.assign({ title: 'Price ($)', range: [rng.price.min, rng.price.max] }, ax)
-            }), cfg).then(p => wireOrtho(p));
+                xaxis: Object.assign({ title: 'FPS', range: [rng.fps.lo, rng.fps.hi] }, ax, fpsTicks),
+                yaxis: Object.assign({ title: 'Price ($)', range: [rng.price.lo, rng.price.hi] }, ax)
+            }), cfg).then(p => wireOrtho(p, 'fps', 'price'));
 
             // XZ: Agents (x) vs Price (y)
             Plotly.newPlot('plot-zx', [{
@@ -1013,13 +1029,14 @@
                 x: data.map(d => d.agents), y: data.map(d => d.z),
                 customdata: data, hoverinfo: 'none', marker
             }], Object.assign({}, baseLayout, {
-                xaxis: Object.assign({ title: 'Agents', range: [rng.agents.min, rng.agents.max] }, ax),
-                yaxis: Object.assign({ title: 'Price ($)', range: [rng.price.min, rng.price.max] }, ax)
-            }), cfg).then(p => wireOrtho(p));
+                xaxis: Object.assign({ title: 'Agents', range: [rng.agents.lo, rng.agents.hi] }, ax),
+                yaxis: Object.assign({ title: 'Price ($)', range: [rng.price.lo, rng.price.hi] }, ax)
+            }), cfg).then(p => wireOrtho(p, 'agents', 'price'));
         }
 
-        // Hook hover (HUD) + click (select) into a 2D ortho plot
-        function wireOrtho(plotEl) {
+        // Hook hover (HUD) + click (select) into a 2D ortho plot.
+        // xAxis/yAxis name which shared filter axis ('agents'|'fps'|'price') each plot edge maps to.
+        function wireOrtho(plotEl, xAxis, yAxis) {
             plotEl.on('plotly_hover', e => {
                 const p = e.points[0].customdata;
                 if(!p) return;
@@ -1032,6 +1049,26 @@
             plotEl.on('plotly_click', e => {
                 const p = e.points[0].customdata;
                 if(p) selectSystem(p.name);
+            });
+
+            // Box-zoom / window selection -> sync the window across all views.
+            // Programmatic redraws use Plotly.newPlot (no relayout event), so no feedback loop.
+            plotEl.on('plotly_relayout', e => {
+                if (!e) return;
+                let changed = false;
+                if (e['xaxis.range[0]'] !== undefined && e['xaxis.range[1]'] !== undefined) {
+                    applyWindow(xAxis, Math.min(e['xaxis.range[0]'], e['xaxis.range[1]']), Math.max(e['xaxis.range[0]'], e['xaxis.range[1]']));
+                    changed = true;
+                } else if (e['xaxis.autorange']) {
+                    applyWindow(xAxis, rng[xAxis].min, rng[xAxis].max); changed = true;
+                }
+                if (e['yaxis.range[0]'] !== undefined && e['yaxis.range[1]'] !== undefined) {
+                    applyWindow(yAxis, Math.min(e['yaxis.range[0]'], e['yaxis.range[1]']), Math.max(e['yaxis.range[0]'], e['yaxis.range[1]']));
+                    changed = true;
+                } else if (e['yaxis.autorange']) {
+                    applyWindow(yAxis, rng[yAxis].min, rng[yAxis].max); changed = true;
+                }
+                if (changed) { draw(); renderTable(); }
             });
         }
 
