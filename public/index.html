@@ -942,6 +942,32 @@
                     selectSystem(p.name);
                 });
 
+                // Scroll-zoom comes through as a camera-distance (dolly) change. Convert that
+                // distance change into an axis-range zoom around each axis center, then snap the
+                // camera back to a fixed distance so the planes/ticks keep the same screen size.
+                els.plot.on('plotly_relayout', e => {
+                    if (cam3dSyncing || !e) return;
+                    const cam = e['scene.camera'];
+                    const eye = (cam && cam.eye) || e['scene.camera.eye'];
+                    if (!eye) return; // not a camera change (e.g. range edit)
+                    const dist = Math.hypot(eye.x, eye.y, eye.z);
+                    const factor = dist / CAM3D_BASE_DIST;
+                    if (Math.abs(factor - 1) < 0.02) return; // pure rotation, leave it
+                    const sc = els.plot._fullLayout.scene;
+                    const zoomAxis = r => {
+                        const lo = r[0], hi = r[1], c = (lo + hi) / 2, half = (hi - lo) / 2 * factor;
+                        return [c - half, c + half];
+                    };
+                    const k = CAM3D_BASE_DIST / dist; // renormalize camera to base distance
+                    cam3dSyncing = true;
+                    Plotly.relayout(els.plot, {
+                        'scene.xaxis.range': zoomAxis(sc.xaxis.range),
+                        'scene.yaxis.range': zoomAxis(sc.yaxis.range),
+                        'scene.zaxis.range': zoomAxis(sc.zaxis.range),
+                        'scene.camera.eye': { x: eye.x * k, y: eye.y * k, z: eye.z * k }
+                    }).finally(() => { cam3dSyncing = false; });
+                });
+
                 // Re-apply highlight if a selection survives this redraw
                 if (selectedName) {
                     const sp = db.find(d => d.name === selectedName);
@@ -1026,6 +1052,12 @@
             'plot-zx': { x: 'agents', y: 'price' }
         };
         let zoomSyncing = false; // guard against relayout feedback loops
+
+        // 3D scroll-zoom -> resize axis ranges instead of dollying the camera, so the
+        // axis planes/tick labels stay the same on-screen size and remain readable.
+        const CAM3D_EYE = { x: 1.6, y: -1.6, z: 0.55 };
+        const CAM3D_BASE_DIST = Math.hypot(CAM3D_EYE.x, CAM3D_EYE.y, CAM3D_EYE.z);
+        let cam3dSyncing = false; // guard against camera relayout feedback loop
 
         // Mirror a zoom/window selection onto every other view's matching axes.
         // changes: { agents?: [lo,hi], fps?: [lo,hi], price?: [lo,hi] }
