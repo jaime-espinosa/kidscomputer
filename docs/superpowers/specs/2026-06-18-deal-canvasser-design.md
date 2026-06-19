@@ -85,6 +85,11 @@ Constraints (from the user):
 7. `.github/workflows/canvass.yml` — cron 3am PT (DST-safe). Steps: **reap → canvass → enrich →
    enforce cap**.
 8. `.github/workflows/digest.yml` — cron 10am PT every other day (DST-safe + parity guard).
+9. `app/api/visit/route.ts` — tiny beacon endpoint. The dashboard calls it on load; it stamps
+   `last_visit` (and a visit counter) on a single Airtable **Control** record. Only real browser
+   loads hit it (automation talks to Airtable/`/api/enrich` directly), so it's a clean "human was
+   here" signal.
+10. `public/index.html` — one line added: `navigator.sendBeacon('/api/visit')` on load.
 
 ### Data model (new Hardware fields)
 Add to table `tblnJoBqI7G2FaBke`:
@@ -134,6 +139,30 @@ Note: pushing workflow files needs git over **SSH** (current gh token lacks `wor
 - Candidates never overwrite curated rows (separate `status`); only inserts, no destructive ops.
 - Craigslist/eBay rate-limited politely; failures logged to the Actions run + the digest notes gaps.
 
+## Dormancy & auto-shutdown on inactivity
+The canvasser should only work while the user cares. It sleeps when ignored and wakes when the
+user returns — no manual toggling required.
+
+- **Visit signal:** the dashboard fires `navigator.sendBeacon('/api/visit')` on load, which stamps
+  `last_visit` on an Airtable **Control** record (a tiny 1-row `Control` table: `last_visit`,
+  `dormant`, `dormant_notified`, `enabled`).
+- **Dormancy check (first step of every cron, before any work):** read `last_visit`.
+  If `now − last_visit > DORMANCY_DAYS` (default **20**), the run goes **dormant**:
+  - Skips reap + canvass + enrich + digest (stops updating → ~zero resource use; only the
+    sub-second date check runs).
+  - If `dormant_notified` is false, opens a **GitHub Issue reminder** (see below) and sets it true.
+- **Auto-wake:** any site visit refreshes `last_visit`; the next nightly run sees recent activity,
+  clears `dormant`/`dormant_notified`, and resumes automatically.
+- **Hard kill-switch:** repo variable `CANVASSER_ENABLED` (default `true`). If `false`, every cron
+  no-ops immediately regardless of visits — for fully pausing without deleting anything.
+
+**Dormancy reminder (GitHub Issue) — "liberate the resources":** a checklist telling the user
+the canvasser paused after `DORMANCY_DAYS` of no visits, and how to:
+1. **Resume** — just visit `kidscomputer.vercel.app` (auto-wakes that night).
+2. **Fully liberate** — set `CANVASSER_ENABLED=false` (stops crons); optionally run
+   `scripts/purge.mjs` to delete all `candidate`/`reviewing` rows (frees Airtable quota);
+   optionally remove `EBAY_*` secrets. `kept` rows and the dashboard are left intact.
+
 ## Free-tier budgets & growth caps (stay free, always)
 Every moving part has a free ceiling; the system is designed to stay strictly under each.
 
@@ -170,6 +199,10 @@ changes.
   deleted and `kept` rows are untouched.
 - **Growth cap:** with `MAX_CANDIDATES` set low (e.g. 5), insert >5 finds; confirm the table
   settles at 5, evicting lowest `deal_score`/oldest, and never exceeds the cap across runs.
+- **Dormancy:** set `DORMANCY_DAYS=0` (or back-date `last_visit`); run the cron → confirm it
+  goes dormant, does no work, and opens exactly one reminder issue. Then hit `/api/visit` (or
+  load the site) and re-run → confirm it wakes and resumes, clearing `dormant_notified`.
+- **Kill-switch:** set `CANVASSER_ENABLED=false`; run both crons → confirm immediate no-op.
 
 ## Open prerequisites (user-provided)
 1. eBay developer key → `EBAY_CLIENT_ID` / `EBAY_CLIENT_SECRET` (user creating).
