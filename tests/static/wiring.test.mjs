@@ -18,6 +18,34 @@ describe("vercel ignored-build wiring", () => {
   })
 })
 
+describe("workflows: keepalive-first, SHA-pinned, least-priv", () => {
+  for (const f of ["canvass", "digest"]) {
+    const yml = read(`.github/workflows/${f}.yml`)
+    it(`${f}: keepalive commits .github/last-run BEFORE the script step`, () => {
+      const keepaliveAt = yml.indexOf(".github/last-run")
+      const scriptAt = yml.indexOf(`scripts/${f}.mjs`)
+      expect(keepaliveAt).toBeGreaterThan(-1)
+      expect(scriptAt).toBeGreaterThan(keepaliveAt)
+      expect(yml).toContain("[skip ci]")
+      expect(yml).toContain("git pull --rebase")
+    })
+    it(`${f}: least-priv permissions + concurrency`, () => {
+      expect(yml).toMatch(/permissions:\s*\n\s*contents: write\s*\n\s*issues: write/)
+      expect(yml).toContain("concurrency:")
+      expect(yml).toContain("cancel-in-progress: false")
+    })
+    it(`${f}: third-party actions are SHA-pinned`, () => {
+      expect(yml).toContain("actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683")
+      expect(yml).toContain("pnpm/action-setup@a3252b78c470c02df07e9d59298aecedc3ccdd6d")
+      expect(yml).toContain("actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020")
+    })
+  }
+  it("canvass cron = 0 10,11; digest cron = 0 17,18", () => {
+    expect(read(".github/workflows/canvass.yml")).toContain('cron: "0 10,11 * * *"')
+    expect(read(".github/workflows/digest.yml")).toContain('cron: "0 17,18 * * *"')
+  })
+})
+
 describe("index.html search-settings panel", () => {
   const html = read("public/index.html")
   it("has the four window inputs + PIN input + save button", () => {
