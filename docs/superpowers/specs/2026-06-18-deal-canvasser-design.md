@@ -17,7 +17,10 @@ shipped unauthenticated write endpoints, and lacked schema bootstrap. v2 **cuts 
 provably free and safe**, hardens the security model, and defers lifecycle automation.
 
 ## Goals (v1)
-- Nightly, off-machine ingestion of **eBay local-pickup** listings $200–1000 within 100mi of 98052.
+- **Search window is user-configurable from the dashboard UI:** price min/max, zipcode, and radius
+  are edited in the browser (not hardcoded) and the nightly job honors them.
+- Nightly, off-machine ingestion of **eBay local-pickup** listings within the configured price
+  window/zip/radius (defaults: $200–1000, 98052, 100mi).
 - New finds written into Hardware as `status=candidate`, **deduped by stable id**, **capped** so the
   base never approaches free limits.
 - A **GitHub-issue digest** (every ~2 days) listing new candidates + **human-loop deep-links** for
@@ -54,7 +57,8 @@ GitHub Actions (cron 3am PT, DST-safe)               GitHub Actions (cron ~10am 
    paginate, 429 backoff. Returns `{ ebay_item_id, title, price, url, distance_mi, condition, image }`.
 3. `scripts/lib/airtable.mjs` — REST helper: list (for dedup + count), batched create (10/req).
    Uses the **CI create-token**. Strict field allowlist; never `typecast` on untrusted input.
-4. `scripts/canvass.mjs` — orchestrates: read Control (`enabled`?) → fetch eBay → parse specs from
+4. `scripts/canvass.mjs` — orchestrates: read Control (`enabled`? + search window: price_min/max,
+   zipcode, radius_mi, with defaults) → fetch eBay → parse specs from
    title (regex; no AI) → filter price/distance → dedup vs existing `ebay_item_id` → insert up to
    `MAX_CANDIDATES`. **Top-level errors are NOT swallowed** (failed run ⇒ GitHub emails). Opens/updates
    a "Canvasser health" issue on uncaught error or N consecutive zero-insert runs.
@@ -66,6 +70,13 @@ GitHub Actions (cron 3am PT, DST-safe)               GitHub Actions (cron ~10am 
    Third-party actions **pinned to commit SHAs**.
 7. `.github/workflows/digest.yml` — cron ~10am PT. Same permissions/concurrency. Steps: keepalive → digest.
 8. **`app/api/hardware` POST removed** (security fix, see below). The route keeps only GET.
+9. `app/api/settings/route.ts` — the **one** authenticated write endpoint. `GET` returns the current
+   Control search window; `PUT` validates a `x-settings-secret` header against `SETTINGS_SECRET`
+   (Vercel env), writes only the allow-listed fields `{price_min, price_max, zipcode, radius_mi}`
+   (numeric/format validated, no `typecast`), rate-limited per IP. Nothing else is writable.
+10. `public/index.html` — a "Search settings" panel (price min/max, zipcode, radius) + a one-time
+    PIN field. On save it `PUT`s to `/api/settings` with the PIN header; the PIN is kept only in
+    `localStorage`, never committed or shipped in the bundle. Panel reads current values via `GET`.
 
 ### Security model (P0 fixes)
 - **Remove the unauthenticated POST** on `/api/hardware` — the dashboard is read-only and the
@@ -73,11 +84,17 @@ GitHub Actions (cron 3am PT, DST-safe)               GitHub Actions (cron ~10am 
   (If a write endpoint is ever needed, it must require a shared-secret header + field allowlist,
   no `typecast`, and rate-limiting.)
 - **Scoped Airtable tokens (rotate current PAT now):**
-  - `AIRTABLE_TOKEN` on **Vercel** → scope to **`data.records:read` on this base only**.
+  - `AIRTABLE_TOKEN` on **Vercel** → `data.records:read+write` on **this base only** (write is needed
+    by `/api/settings`). Airtable PAT scopes are per-base, not per-table, so the **endpoint code is the
+    enforcement boundary**: `/api/settings` is the only writer and only ever writes the 4 allow-listed
+    Control fields. If a read-only site is preferred later, settings can move to a CI-only path.
   - `AIRTABLE_CI_TOKEN` as a **GitHub Actions secret** → `data.records:read+write` on this base only;
     used by `canvass.mjs`/`bootstrap.mjs`. `schema.bases:write` only while bootstrapping, then dropped.
 - **Least-privilege workflows**; **SHA-pin** all third-party actions; secrets never echoed.
 - **No public data leak:** Issues/links use only derived/needed fields; no raw-data CSV in v1.
+- **Settings write is the only write endpoint and it is authenticated:** `/api/settings` PUT requires
+  the `SETTINGS_SECRET` PIN (Vercel env, user-chosen), validates + allow-lists the 4 search fields,
+  rate-limits, and never uses `typecast`. The PIN lives only in the user's browser `localStorage`.
 
 ### Data model (new Hardware fields)
 - `source` (singleSelect: eBay, Craigslist, FB Marketplace, OfferUp, Estate/Auction, Manual)
@@ -87,7 +104,8 @@ GitHub Actions (cron 3am PT, DST-safe)               GitHub Actions (cron ~10am 
 - `listing_url` (url)
 - `ebay_item_id` (singleLineText) — **canonical dedup key** (numeric eBay itemId).
 `Control` table (1 row): `enabled` (checkbox kill-switch), `last_canvass_pacific_date`,
-`last_digest_date`. (No `last_visit`/dormancy in v1.)
+`last_digest_date`, **`price_min`, `price_max`, `zipcode`, `radius_mi`** (UI-editable search
+window; canvass reads these with defaults 200/1000/98052/100 if blank). (No `last_visit`/dormancy in v1.)
 
 ### Liveness, scheduling, free-tier (P0/P1)
 - **Keepalive (anti-deadlock):** every workflow run first touches `.github/last-run` and commits
@@ -126,7 +144,10 @@ GitHub Actions (cron 3am PT, DST-safe)               GitHub Actions (cron ~10am 
 ## Prerequisites (user)
 1. **eBay production keyset** → `EBAY_CLIENT_ID` / `EBAY_CLIENT_SECRET` (GitHub secrets).
 2. **Rotate + scope Airtable tokens** (read-only for Vercel; CI read/write secret).
-3. Assistant verifies the eBay LOCAL_PICKUP query returns in-radius results before wiring the cron.
+   The Vercel token now needs `data.records:read+write` on this base (for `/api/settings` PUT to
+   the Control table) — still scoped to this one base only.
+3. **Choose a `SETTINGS_SECRET` PIN** (Vercel env var) to unlock the UI settings panel.
+4. Assistant verifies the eBay LOCAL_PICKUP query returns in-radius results before wiring the cron.
 
 ## Verification
 - `bootstrap.mjs` run → confirm fields + Control table exist; re-run is a no-op.
@@ -136,5 +157,8 @@ GitHub Actions (cron 3am PT, DST-safe)               GitHub Actions (cron ~10am 
 - `digest.yml` dispatch → Issue created with candidates + working gated-site links; cadence honors
   `last_digest_date`.
 - Keepalive: confirm a `[skip ci]` commit lands each run and does **not** trigger a Vercel deploy.
-- Security: confirm `/api/hardware` POST is gone (405) and the Vercel token is read-only.
+- Security: confirm `/api/hardware` POST is gone (405); `/api/settings` PUT rejects a wrong/missing
+  PIN (401) and accepts only `{price_min,price_max,zipcode,radius_mi}` (extra keys ignored/400).
+- Settings round-trip: change price/zip/radius in the UI → values land in Control → the next
+  canvass run searches the new window (verify via a manual dispatch).
 - DST no-op branch makes zero API calls (assert in a unit test of the date guard).
