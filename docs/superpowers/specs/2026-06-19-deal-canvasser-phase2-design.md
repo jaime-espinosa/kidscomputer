@@ -23,7 +23,7 @@ datacenter-IP blocking (Craigslist + most retailer anti-bot). Therefore:
 - **Local (WSL, Python, residential IP, best-effort):** ONE agent scrapes **everything else**
   (retailers + FB + OfferUp + Craigslist) via the `~/src` substrate, writing to the same Airtable.
 
-**Tradeoff (confirm at review):** retailers become best-effort (only when WSL is awake) instead of
+**Tradeoff (confirmed at review):** retailers become best-effort (only when WSL is awake) instead of
 always-on. Rationale: routing them through the residential, stealth, login-capable local agent is
 the only *free* way they work reliably (cloud IPs get blocked). eBay (API) stays always-on for
 timing-critical deals.
@@ -113,11 +113,16 @@ dedup vs Airtable `listing_key` → insert if under cap.
 ## Non-goals (Phase 2)
 - No always-on guarantee for scraped sources (WSL best-effort).
 - No paid proxies/cloud browser. No change to v1 eBay/digest beyond the S0 generalizations.
-- Retailer coverage is incremental: ship FB/OfferUp/Craigslist + 1–2 friendliest retailers
-  (e.g. Best Buy open-box, Woot) first; add more retailers as playbooks are written.
+- Retailer coverage is incremental: all six are in scope (Best Buy open-box, Woot, Micro Center,
+  Newegg, Back Market, Amazon Renewed), but built friendliest-first (Best Buy, Woot, Micro Center),
+  with Newegg/Back Market/Amazon Renewed as best-effort stealth playbooks added/iterated after.
 
-## Open items for review
-1. Confirm the **retailers-go-local (best-effort)** routing vs trying some retailers in the cloud cron.
-2. Confirm **which retailers** to implement first (default: Best Buy open-box + Woot).
-3. Confirm the cross-language split (Node cloud + Python local) is acceptable (vs porting everything
-   to one language — not recommended; reuse the existing substrate).
+## Decisions (resolved at review)
+1. **Retailers go local** (all scraped sources on the WSL agent) — confirmed. Retailers are
+   best-effort (when WSL is awake); eBay (API) stays always-on in the cloud cron.
+2. **Retailers to implement:** Best Buy open-box, Woot, Micro Center (location-scoped → good for
+   local), Newegg, Back Market, Amazon Renewed. The last three have heavier anti-bot → implement
+   on the Camoufox stealth agent and treat as **best-effort** (fail-soft per source; add/iterate
+   playbooks as they prove out). Build the friendlier ones (Best Buy, Woot, Micro Center) first.
+3. **Cross-language split** (Node cloud + Python local) — accepted; reuse the existing `~/src`
+   Python substrate rather than porting it.
