@@ -112,7 +112,8 @@ async function main() {
         const url = new URL(hwUrl)
         url.searchParams.set("pageSize", "100")
         url.searchParams.set("filterByFormula", formula)
-        for (const f of ["name", "title", "price", "z", "distance_mi", "listing_url", "ebay_item_id", "found_date"]) url.searchParams.append("fields[]", f)
+        // Only real Hardware fields — requesting non-existent fields (title/price) 422s the list.
+        for (const f of ["name", "z", "distance_mi", "listing_url", "ebay_item_id", "found_date"]) url.searchParams.append("fields[]", f)
         if (offset) url.searchParams.set("offset", offset)
         const res = await fetch(url.toString(), { headers })
         if (!res.ok) throw new Error(`candidates list ${res.status}: ${await res.text()}`)
