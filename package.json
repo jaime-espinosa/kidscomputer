@@ -6,7 +6,13 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint ."
+    "lint": "eslint .",
+    "test": "vitest run --passWithNoTests",
+    "test:watch": "vitest",
+    "test:scripts": "vitest run tests/lib tests/canvass.test.mjs tests/digest.test.mjs tests/static",
+    "bootstrap": "node --env-file=.env.local scripts/bootstrap.mjs",
+    "canvass": "node --env-file=.env.local scripts/canvass.mjs",
+    "digest": "node --env-file=.env.local scripts/digest.mjs"
   },
   "dependencies": {
     "@base-ui/react": "^1.5.0",
@@ -26,9 +32,12 @@
     "@types/node": "^24",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "@vitest/coverage-v8": "2.1.8",
+    "dotenv": "16.4.7",
     "postcss": "^8.5",
     "tailwindcss": "^4.2.0",
-    "typescript": "5.7.3"
+    "typescript": "5.7.3",
+    "vitest": "2.1.8"
   },
   "pnpm": {
     "overrides": {
