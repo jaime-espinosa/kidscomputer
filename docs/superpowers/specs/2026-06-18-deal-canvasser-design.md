@@ -60,11 +60,18 @@ Constraints (from the user):
 ```
 
 ### Components (all in the `kidscomputer` repo)
+0. `scripts/reap.mjs` — **runs first each night**. Re-validates every `candidate`/`reviewing`
+   row's listing: eBay item status via API (ended/sold → prune), Craigslist GET (404 or
+   "posting has been deleted/expired" → prune), generic HTTP non-200 → prune. Sets
+   `last_checked`; **deletes** rows confirmed dead/sold (reclaims free-tier record quota).
+   Never touches `status=kept` rows. See "Listing lifecycle" below.
 1. `scripts/canvass.mjs` — Node script (no browser). Fetches eBay + Craigslist, normalizes,
    filters by price ($200–1000) and distance (≤100mi of 98052), dedups against existing
    Hardware rows (by source listing id/url, and fuzzy name), inserts new rows via Airtable
    REST using the existing PAT. New rows: `status="candidate"`, `owned=No`, `source`,
    `found_date`, `distance_mi`, listing URL in `purchases`, plus any parsed `gpu_model`/`type`/`condition`.
+   **Enforces growth caps** (see "Free-tier budgets") — bounded inserts + eviction of the
+   weakest candidates so the base never approaches Airtable's free record limit.
 2. `scripts/lib/ebay.mjs` — eBay Browse API client (OAuth client-credentials; filters
    `price:[200..1000]`, `deliveryCountry`, `itemLocationRegion`/distance via buyer postal 98052).
 3. `scripts/lib/craigslist.mjs` — Craigslist `seattle` search/RSS client (computers category,
@@ -75,17 +82,33 @@ Constraints (from the user):
    a follow-up pass). Uses Vercel AI Gateway ($2/day).
 6. `scripts/digest.mjs` — builds the every-other-day GitHub Issue digest; uses `/api/enrich`
    or the AI gateway to write ranked prose; embeds gated-site deep links.
-7. `.github/workflows/canvass.yml` — cron 3am PT (DST-safe, see Scheduling).
+7. `.github/workflows/canvass.yml` — cron 3am PT (DST-safe). Steps: **reap → canvass → enrich →
+   enforce cap**.
 8. `.github/workflows/digest.yml` — cron 10am PT every other day (DST-safe + parity guard).
 
 ### Data model (new Hardware fields)
 Add to table `tblnJoBqI7G2FaBke`:
 - `source` (singleSelect: eBay, Craigslist, FB Marketplace, OfferUp, Estate/Auction, Manual)
 - `status` (singleSelect: candidate, reviewing, kept, dismissed) — default `candidate` for finds.
+  Dead/sold candidates are **deleted** (not a status) to reclaim free-tier quota.
 - `found_date` (date)
+- `last_checked` (date) — set by the reaper; drives staleness sweeps.
 - `distance_mi` (number)
+- `deal_score` (number 0–100) — from enrichment; drives eviction ranking under the cap.
 - `listing_url` (url)  — canonical link (also mirrored into `purchases`)
 The dashboard can later filter `status != dismissed`; curated rows get `status=kept`/blank.
+
+### Listing lifecycle (staleness / dead-link / sold handling)
+Listings are ephemeral, so candidates must self-expire:
+- **Re-validation:** the nightly reaper checks each non-`kept` candidate's URL.
+  - eBay: `getItem`/Browse lookup → if ended/sold/not-found, prune.
+  - Craigslist: GET URL → 404 or deletion/expiry text, prune.
+  - Generic: any non-200 (or redirect to a search/home page) after one retry → prune.
+- **Action = delete** (not soft-mark): keeps the base small and free-tier-safe. Rationale:
+  a sold/dead listing has no future value and soft-marking would consume record quota.
+- **Time cap:** any `candidate` older than `CANDIDATE_TTL_DAYS` (default 21) with no promotion
+  is pruned even if the link still resolves (avoids slow accumulation of stale-but-live posts).
+- **Protected:** `status=kept` rows are never auto-pruned (these are deals you care about).
 
 ### Sources (v1)
 - **eBay** — Browse API, authoritative, price + buyer-postal distance filter. (needs dev key)
@@ -111,6 +134,23 @@ Note: pushing workflow files needs git over **SSH** (current gh token lacks `wor
 - Candidates never overwrite curated rows (separate `status`); only inserts, no destructive ops.
 - Craigslist/eBay rate-limited politely; failures logged to the Actions run + the digest notes gaps.
 
+## Free-tier budgets & growth caps (stay free, always)
+Every moving part has a free ceiling; the system is designed to stay strictly under each.
+
+| Resource | Free limit | How we stay under it |
+|----------|-----------|----------------------|
+| **Airtable records / base** | ~1,000 on Free plan | Hard cap `MAX_CANDIDATES` (default **150**) on open candidates. Curated `kept` rows (~tens) + 150 candidates ≪ 1,000. Reaper deletes dead/sold/expired each night. |
+| **Airtable API** | 5 req/sec | Batch reads (100/page) + batched writes (10/req), small nightly volume. |
+| **Vercel AI Gateway** | **$2/day** credit | Enrich **only new** candidates once (never re-enrich); per-run insert cap `MAX_NEW_PER_RUN` (default **30**) bounds calls to ≤30 small completions/day. Digest prose is one more small call. |
+| **GitHub Actions** | Unlimited for public repos | `kidscomputer` is public → free. Two short cron jobs/day. |
+| **Airtable AI fields** | **Not on Free plan** | Do **not** depend on `aiText` enrichment; default to the Vercel `/api/enrich` endpoint. Use Airtable AI only if the user later confirms a credited plan. |
+
+**Eviction policy (the growth cap):** after each night's inserts, if open candidates exceed
+`MAX_CANDIDATES`, delete the lowest-ranked rows by `(deal_score asc, found_date asc)` until at
+the cap. Net effect: the table is a bounded, self-refreshing **leaderboard of the best current
+deals**, not an ever-growing log. All caps are repo variables so they can be tuned without code
+changes.
+
 ## Phasing
 - **Phase 1 (build now):** Track A (eBay + Craigslist → Airtable candidates) + new fields +
   Track B GitHub-issue digest with gated-site links. Airtable-AI enrichment if enabled,
@@ -126,6 +166,10 @@ Note: pushing workflow files needs git over **SSH** (current gh token lacks `wor
 - Manually trigger `digest.yml`; confirm a GitHub Issue is created with ranked finds + working
   gated-site search links.
 - Confirm Pacific-hour/parity guards (unit-test the date logic).
+- **Staleness:** seed a candidate with a dead/expired URL; run `reap.mjs`; confirm the row is
+  deleted and `kept` rows are untouched.
+- **Growth cap:** with `MAX_CANDIDATES` set low (e.g. 5), insert >5 finds; confirm the table
+  settles at 5, evicting lowest `deal_score`/oldest, and never exceeds the cap across runs.
 
 ## Open prerequisites (user-provided)
 1. eBay developer key → `EBAY_CLIENT_ID` / `EBAY_CLIENT_SECRET` (user creating).
