@@ -2,13 +2,44 @@ import { resolveWindow } from "./lib/control.mjs"
 import { pacificHour, pacificDateString, daysSince } from "./lib/pacific.mjs"
 import { reportHealth } from "./lib/health.mjs"
 
+const DIGEST_LABEL = "canvasser-digest"
+const GH_API = "https://api.github.com"
+
+/** Open-or-update a single digest issue (mirrors health.mjs dedup pattern). */
+export async function postOrUpdateDigestIssue({ repo, token, title, body, fetchImpl = fetch }) {
+  if (!repo || !token) throw new Error("GITHUB_REPOSITORY/GITHUB_TOKEN required")
+  const headers = {
+    Authorization: `Bearer ${token}`,
+    Accept: "application/vnd.github+json",
+    "X-GitHub-Api-Version": "2022-11-28",
+    "Content-Type": "application/json",
+  }
+  const listRes = await fetchImpl(`${GH_API}/repos/${repo}/issues?state=open&labels=${DIGEST_LABEL}`, { headers })
+  const open = (await listRes.json()) ?? []
+
+  if (Array.isArray(open) && open.length > 0) {
+    const num = open[0].number
+    await fetchImpl(`${GH_API}/repos/${repo}/issues/${num}/comments`, {
+      method: "POST", headers, body: JSON.stringify({ body }),
+    })
+    return { issue: num, action: "comment" }
+  }
+  const createRes = await fetchImpl(`${GH_API}/repos/${repo}/issues`, {
+    method: "POST", headers,
+    body: JSON.stringify({ title, body, labels: ["canvasser", DIGEST_LABEL] }),
+  })
+  const created = await createRes.json()
+  return { issue: created.number, action: "create" }
+}
+
 export function gatedLinks(win) {
   const q = encodeURIComponent("computer")
   return [
     { name: "Craigslist (Seattle)", url: `https://seattle.craigslist.org/search/sss?query=${q}&min_price=${win.price_min}&max_price=${win.price_max}&postal=${win.zipcode}&search_distance=${win.radius_mi}` },
     { name: "FB Marketplace", url: `https://www.facebook.com/marketplace/seattle/search/?query=${q}&minPrice=${win.price_min}&maxPrice=${win.price_max}&radius=${win.radius_mi}` },
     { name: "OfferUp", url: `https://offerup.com/search?q=${q}&price_min=${win.price_min}&price_max=${win.price_max}&radius=${win.radius_mi}` },
-    { name: "EstateSales.NET", url: `https://www.estatesales.net/WA/Redmond/${win.zipcode}` },
+    // EstateSales.NET zip search — city/state not encoded in URL; zip+radius query form is the closest config-driven option
+    { name: "EstateSales.NET", url: `https://www.estatesales.net/search?zip=${win.zipcode}&radius=${win.radius_mi}` },
     { name: "HiBid", url: `https://hibid.com/auctions?zip=${win.zipcode}&miles=${win.radius_mi}&q=${q}` },
   ]
 }
@@ -96,15 +127,8 @@ async function main() {
     },
   }
 
-  const postIssue = async ({ title, body }) => {
-    if (!repo || !ghToken) throw new Error("GITHUB_REPOSITORY/GITHUB_TOKEN required")
-    const res = await fetch(`https://api.github.com/repos/${repo}/issues`, {
-      method: "POST",
-      headers: { Authorization: `Bearer ${ghToken}`, Accept: "application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28", "Content-Type": "application/json" },
-      body: JSON.stringify({ title, body, labels: ["canvasser", "digest"] }),
-    })
-    if (!res.ok) throw new Error(`digest issue ${res.status}: ${await res.text()}`)
-  }
+  const postIssue = ({ title, body }) =>
+    postOrUpdateDigestIssue({ repo, token: ghToken, title, body })
 
   try {
     const result = await runDigest({
