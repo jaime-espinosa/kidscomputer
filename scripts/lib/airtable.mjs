@@ -1,6 +1,6 @@
 export const CANDIDATE_FIELDS = [
   "name", "type", "condition", "owned", "source", "status", "found_date",
-  "distance_mi", "listing_url", "ebay_item_id", "title", "price", "gpu_model", "vram", "ram", "z",
+  "distance_mi", "listing_url", "ebay_item_id", "gpu_model", "vram", "ram", "z",
 ]
 
 export function createAirtable({ token, baseId, table = "Hardware", fetchImpl = fetch }) {

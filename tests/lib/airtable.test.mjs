@@ -29,19 +29,23 @@ describe("airtable.listExistingIds", () => {
 describe("airtable.create", () => {
   it("strips non-allowlisted fields, keeps owned:false (checkbox boolean), and NEVER sends typecast", async () => {
     const fetch = fakeFetch([{ body: { records: [{ id: "rec1" }] } }])
-    await at(fetch).create([{ ebay_item_id: "123", title: "X", price: 500, evil: "DROP TABLE", owned: false }])
+    await at(fetch).create([{ ebay_item_id: "123", z: 500, evil: "DROP TABLE", title: "X", price: 500, owned: false }])
     const sent = fetch.calls[0].body
     expect(sent.typecast).toBeUndefined()
     expect(Object.keys(sent.records[0].fields)).toEqual(
-      expect.arrayContaining(["ebay_item_id", "title", "price"]),
+      expect.arrayContaining(["ebay_item_id", "z", "owned"]),
     )
+    // non-schema keys (NOT in CANDIDATE_FIELDS) must be stripped — title/price/evil are not Hardware fields
+    // and would 422 the no-typecast write if sent.
     expect(sent.records[0].fields.evil).toBeUndefined()
+    expect(sent.records[0].fields.title).toBeUndefined()
+    expect(sent.records[0].fields.price).toBeUndefined()
     // owned is a checkbox/boolean: the falsy value false must NOT be dropped by the allowlist pick()
     expect(sent.records[0].fields.owned).toBe(false)
   })
   it("batches in chunks of 10", async () => {
     const fetch = fakeFetch([{ body: { records: [] } }, { body: { records: [] } }])
-    const rows = Array.from({ length: 15 }, (_, i) => ({ ebay_item_id: String(i), title: "t", price: 300 }))
+    const rows = Array.from({ length: 15 }, (_, i) => ({ ebay_item_id: String(i), z: 300 }))
     await at(fetch).create(rows)
     expect(fetch.calls).toHaveLength(2)
     expect(fetch.calls[0].body.records).toHaveLength(10)
@@ -50,7 +54,7 @@ describe("airtable.create", () => {
   it("CANDIDATE_FIELDS matches the v2 data model", () => {
     expect(CANDIDATE_FIELDS).toEqual([
       "name", "type", "condition", "owned", "source", "status", "found_date",
-      "distance_mi", "listing_url", "ebay_item_id", "title", "price", "gpu_model", "vram", "ram", "z",
+      "distance_mi", "listing_url", "ebay_item_id", "gpu_model", "vram", "ram", "z",
     ])
   })
   it("omits null/undefined fields (e.g. condition:null, distance_mi:null) but keeps owned:false", async () => {
@@ -62,8 +66,8 @@ describe("airtable.create", () => {
       condition: null,
       distance_mi: null,
       ebay_item_id: "1",
-      title: "GPU",
-      price: 400,
+      name: "GPU",
+      z: 400,
     }])
     const fields = fetch.calls[0].body.records[0].fields
     // null-valued fields must be absent
@@ -73,7 +77,7 @@ describe("airtable.create", () => {
     expect(fields.owned).toBe(false)
     // other present fields must survive
     expect(fields.ebay_item_id).toBe("1")
-    expect(fields.title).toBe("GPU")
-    expect(fields.price).toBe(400)
+    expect(fields.name).toBe("GPU")
+    expect(fields.z).toBe(400)
   })
 })

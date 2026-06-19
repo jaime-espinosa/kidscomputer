@@ -37,8 +37,6 @@ export async function runCanvass(deps) {
         distance_mi: i.distance_mi,
         listing_url: cleanUrl(i.url),
         ebay_item_id: i.ebay_item_id,
-        title: i.title,
-        price: i.price,
         z: i.price,
         gpu_model: specs.gpu_model ?? undefined,
         vram: specs.vram ?? undefined,
