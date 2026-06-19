@@ -92,13 +92,47 @@ the fleet; the canvasser auto-discovers new deals.
 - `facebook.com` is in the `~/src` vault **deny list** → needs an allowlist exception.
 - WSL caveat: systemd user timers fire only when WSL is running; FB/CL coverage is best-effort.
 
-**Exact `~/src` substrate integration points to nail in the spec** (a recon Explore agent was
-launched this session to gather these — re-run if not captured): `scripts/capture_cookies.py`
-(one-time burner login → vault), `_util/_browse/session.py::session_for(...)` +
-`vault_session.inject_vault_cookies(...)`, `_pattern/_sites` playbook YAML schema + the
-`execute(site,intent,params,handle)` entrypoint, `_cour/_vault/allowlist.toml` (FB/OfferUp/CL
-exception), systemd timers under `/home/jaime/command/systemd/`, and how a standalone `~/src`
-script imports `_util._browse` + writes to Airtable (REST with a token).
+**Exact `~/src` substrate integration points** — captured concretely below (recon completed
+2026-06-19), so the Phase 2 spec can be written without re-exploring.
+
+## Phase 2 — `~/src` substrate integration (recon, concrete)
+Python **3.12**, system `/usr/bin/python3`. No venv/pipenv — deps are ambient (`pip install --user`).
+A standalone script under `~/src` imports organs directly (`from _util._browse.session import session_for`);
+add `sys.path.insert(0, <src>)` if run from elsewhere. **No Airtable client in the tree** — use REST
+via `requests` with a token (same base `appLnCrA0kRqr9Di2`, table `tblnJoBqI7G2FaBke`/Hardware).
+Install: `pip install playwright camoufox browserforge requests python-dotenv && playwright install chromium`.
+
+1. **Cookie seed (one-time per site):** `python3 scripts/capture_cookies.py facebook|offerup|craigslist`
+   — opens a headed 3-min login window, saves cookies to `_cour/_vault/cookies/{site}.json`. First add
+   each site to the `TARGETS` dict in `scripts/capture_cookies.py` (url, cookie_file, domains,
+   logged_in_check). Re-run to re-seed when cookies expire (~30–90d).
+2. **Logged-in session in code:** `_util/_browse/session.py` →
+   `async with session_for(site, account="default", headless=True, backend="playwright"|"camoufox", config=BrowseConfig|None) as session:`
+   yields a `Session` with `.page` / `.context` / `.engine` (cookies auto-injected). Stealth:
+   `session_for(site, backend="camoufox")` or `BrowseConfig(backend="camoufox", stealth=True)`.
+   Low-level: `vault_session.inject_vault_cookies(context, site, account="default", missing_ok=False)`.
+3. **Vault allowlist (`_cour/_vault/allowlist.toml`):** add to `[cookies]`:
+   `facebook = ["facebook.com","m.facebook.com","web.facebook.com"]`, `offerup = ["offerup.com","www.offerup.com"]`,
+   `craigslist = ["craigslist.org","www.craigslist.org"]`; and **remove `"facebook.com"` from `[deny].domains`**
+   (OfferUp/CL aren't denied). `version` must stay 1; duplicate domains across sites are rejected at load.
+4. **Site playbooks:** YAML variants in `_pattern/_sites/variants/*.yaml` (fields: site, goal, variant_id,
+   status, browser, headless, inputs, steps[{id,kind:goto|adaptive_fill|keyboard|wait|extract_text,...}],
+   extraction{primary,result_selectors,completion_timeout_s}, fitness). Run from code via
+   `from _pattern._sites import execute` →
+   `await execute(site, intent, params=dict, handle=session.engine, ...) -> {success, data, error_kind, error, steps_completed, ...}`
+   (`factory.py:360`). `error_kind` includes `login_wall`, `timeout`, `selector_miss` — use for health/retry.
+5. **Schedule on WSL:** systemd **user** timers under `~/command/systemd/` (pattern:
+   `master-venue-guard.timer` + a `.service` `Type=oneshot ExecStart=/usr/bin/python3 %h/src/scripts/marketplace_scraper.py`).
+   Enable: `systemctl --user enable --now marketplace-scrape.timer`. **Run `loginctl enable-linger $(whoami)`**
+   so timers survive logout; still WSL-best-effort (only fires while WSL is running). Put `AIRTABLE_*` in the
+   service `EnvironmentFile=` (NOT committed).
+
+**Phase-2 build sketch:** `~/src/scripts/marketplace_scraper.py` → for each of FB/OfferUp/Craigslist:
+`session_for(site)` → `execute(site, "marketplace_search", params={query, zip, price window}, handle=session.engine)`
+→ parse listings → map to the SAME candidate shape (generalized dedup key `source`+canonical-id, since v1
+dedup is eBay-`ebay_item_id`-specific) → Airtable REST create with the field allowlist (no typecast, owned:false,
+condition mapped, type∈{Laptop,Desktop}, source∈{FB Marketplace,OfferUp,Craigslist}). Retailers (2a) stay in
+the cloud canvass cron as no-auth fetch+parse modules. Add a `Retailer` choice to the `source` singleSelect.
 
 ## How to resume (process)
 Phase 2 was mid-**brainstorming** (decisions above locked). Next steps:
