@@ -64,7 +64,11 @@ export function createEbayClient({
 
 function normalize(it) {
   const price = it.price?.value != null ? Number(it.price.value) : null
-  const dist = it.distance?.value != null ? Number(it.distance.value) : null
+  // eBay Browse ItemSummary exposes pickup distance as `distanceFromPickupLocation`
+  // ({ value, unitOfMeasure }); fall back to `distance` for older/test shapes. Convert km → mi.
+  const dObj = it.distanceFromPickupLocation ?? it.distance
+  let dist = dObj?.value != null ? Number(dObj.value) : null
+  if (dist != null && /^k/i.test(String(dObj?.unitOfMeasure ?? ""))) dist = dist * 0.621371
   return {
     ebay_item_id: String(it.legacyItemId ?? it.itemId ?? ""),
     title: it.title ?? "",

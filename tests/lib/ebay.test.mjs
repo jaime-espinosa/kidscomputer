@@ -31,7 +31,7 @@ describe("createEbayClient", () => {
               price: { value: "500.00" },
               itemWebUrl: "https://www.ebay.com/itm/123?campid=5338",
               condition: "Seller refurbished", // free-form eBay value — NOT a legal singleSelect choice
-              distance: { value: "42.0", unit: "mi" },
+              distanceFromPickupLocation: { value: "42.0", unitOfMeasure: "mi" }, // real eBay Browse field
               image: { imageUrl: "https://i.ebayimg.com/x.jpg" },
             },
           ],
@@ -67,7 +67,7 @@ describe("createEbayClient", () => {
       {
         body: {
           itemSummaries: [
-            { itemId: "v1|9|0", legacyItemId: "9", title: "PC", price: { value: "300.00" }, itemWebUrl: "https://ebay.com/itm/9", condition: "Weird", distance: { value: "5", unit: "mi" } },
+            { itemId: "v1|9|0", legacyItemId: "9", title: "PC", price: { value: "300.00" }, itemWebUrl: "https://ebay.com/itm/9", condition: "Weird", distanceFromPickupLocation: { value: "5", unitOfMeasure: "mi" } },
           ],
         },
       },

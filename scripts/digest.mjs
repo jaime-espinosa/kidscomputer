@@ -120,7 +120,7 @@ async function main() {
         const data = await res.json()
         for (const r of data.records ?? []) {
           const f = r.fields ?? {}
-          candidates.push({ ebay_item_id: f.ebay_item_id, title: f.title ?? f.name, price: f.price ?? f.z, distance_mi: f.distance_mi, listing_url: f.listing_url })
+          candidates.push({ ebay_item_id: f.ebay_item_id, title: f.name, price: f.z, distance_mi: f.distance_mi, listing_url: f.listing_url })
         }
         offset = data.offset
       } while (offset)
