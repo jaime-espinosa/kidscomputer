@@ -1,4 +1,4 @@
-import { type NextRequest, NextResponse } from "next/server"
+import { NextResponse } from "next/server"
 
 const TOKEN = process.env.AIRTABLE_TOKEN
 const BASE_ID = process.env.AIRTABLE_BASE_ID
@@ -135,54 +135,6 @@ export async function GET() {
     return NextResponse.json(
       { records: [], source: "error", message: err instanceof Error ? err.message : "Unknown error" },
       { status: 200 },
-    )
-  }
-}
-
-export async function POST(req: NextRequest) {
-  if (!configured) {
-    return NextResponse.json({ created: 0, message: "Airtable env vars not set" }, { status: 400 })
-  }
-
-  let rows: Array<Record<string, unknown>>
-  try {
-    const body = await req.json()
-    rows = Array.isArray(body) ? body : body?.records
-    if (!Array.isArray(rows)) throw new Error("Body must be a JSON array of rows")
-  } catch (err) {
-    return NextResponse.json(
-      { created: 0, message: err instanceof Error ? err.message : "Invalid JSON" },
-      { status: 400 },
-    )
-  }
-
-  try {
-    let created = 0
-    for (let i = 0; i < rows.length; i += 10) {
-      const chunk = rows.slice(i, i + 10).map((fields) => ({ fields }))
-      const res = await fetch(api(), {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${TOKEN}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ records: chunk, typecast: true }),
-      })
-      if (!res.ok) {
-        const text = await res.text()
-        return NextResponse.json(
-          { created, message: `Airtable ${res.status}: ${text.slice(0, 200)}` },
-          { status: 502 },
-        )
-      }
-      const data = (await res.json()) as { records?: unknown[] }
-      created += data.records?.length ?? 0
-    }
-    return NextResponse.json({ created })
-  } catch (err) {
-    return NextResponse.json(
-      { created: 0, message: err instanceof Error ? err.message : "Unknown error" },
-      { status: 502 },
     )
   }
 }
