@@ -109,8 +109,13 @@ Listings are ephemeral, so candidates must self-expire:
   - eBay: `getItem`/Browse lookup → if ended/sold/not-found, prune.
   - Craigslist: GET URL → 404 or deletion/expiry text, prune.
   - Generic: any non-200 (or redirect to a search/home page) after one retry → prune.
-- **Action = delete** (not soft-mark): keeps the base small and free-tier-safe. Rationale:
-  a sold/dead listing has no future value and soft-marking would consume record quota.
+- **Action = archive-then-delete:** before removing a row, append it to a CSV committed in the
+  repo — `data/archive/listings-archive.csv` (columns: `name, source, price, found_date,
+  last_checked, removed_date, removal_reason [sold|dead|expired|evicted], listing_url, deal_score`).
+  Then delete the Airtable row. This preserves full free history (in git, zero Airtable quota)
+  while keeping the live base small. The workflow commits the updated CSV (`permissions:
+  contents: write`). Eviction under the growth cap and the dormancy `purge.mjs` archive the
+  same way before deleting.
 - **Time cap:** any `candidate` older than `CANDIDATE_TTL_DAYS` (default 21) with no promotion
   is pruned even if the link still resolves (avoids slow accumulation of stale-but-live posts).
 - **Protected:** `status=kept` rows are never auto-pruned (these are deals you care about).
