@@ -10,7 +10,16 @@ export function applyWindow(items, win) {
 }
 
 export function dedup(items, existingIds) {
-  return items.filter((i) => !existingIds.has(String(i.ebay_item_id)))
+  const seen = new Set(existingIds)
+  const result = []
+  for (const item of items) {
+    const id = String(item.ebay_item_id)
+    if (!seen.has(id)) {
+      seen.add(id)
+      result.push(item)
+    }
+  }
+  return result
 }
 
 export function capInserts(items, { currentCount, max }) {

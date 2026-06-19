@@ -16,6 +16,13 @@ describe("dedup", () => {
     const existing = new Set(["2"])
     expect(dedup([mk("2", 1, 1), mk("3", 1, 1)], existing).map((i) => i.ebay_item_id)).toEqual(["3"])
   })
+  it("removes within-batch duplicates, keeping first occurrence", () => {
+    const existing = new Set()
+    const result = dedup([mk("1", 100, 50), mk("1", 200, 75), mk("2", 300, 25)], existing)
+    expect(result).toHaveLength(2)
+    expect(result.map((i) => i.ebay_item_id)).toEqual(["1", "2"])
+    expect(result[0].price).toBe(100)
+  })
 })
 
 describe("capInserts", () => {
