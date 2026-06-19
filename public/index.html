@@ -373,6 +373,28 @@
         </div>
     </header>
 
+    <section class="panel rounded-2xl overflow-hidden mt-4" id="settings-panel">
+        <div class="flex items-center justify-between px-5 py-3.5 border-b border-[color:var(--border-soft)]">
+            <h3 class="text-sm font-semibold tracking-tight">Search settings (nightly canvasser)</h3>
+            <span id="settings-status" class="text-[11px] mono text-[color:var(--muted)]">Loading</span>
+        </div>
+        <div class="grid grid-cols-2 md:grid-cols-5 gap-3 px-5 py-4">
+            <label class="text-[11px] mono text-[color:var(--muted)]">Min $
+                <input id="s-price-min" type="number" min="0" step="25" class="w-full mt-1 bg-[color:var(--panel-2)] border border-[color:var(--border)] rounded-lg px-3 py-2 text-[13px] mono text-[color:var(--text)]"></label>
+            <label class="text-[11px] mono text-[color:var(--muted)]">Max $
+                <input id="s-price-max" type="number" min="0" step="25" class="w-full mt-1 bg-[color:var(--panel-2)] border border-[color:var(--border)] rounded-lg px-3 py-2 text-[13px] mono text-[color:var(--text)]"></label>
+            <label class="text-[11px] mono text-[color:var(--muted)]">Zip
+                <input id="s-zip" type="text" inputmode="numeric" maxlength="5" class="w-full mt-1 bg-[color:var(--panel-2)] border border-[color:var(--border)] rounded-lg px-3 py-2 text-[13px] mono text-[color:var(--text)]"></label>
+            <label class="text-[11px] mono text-[color:var(--muted)]">Radius mi
+                <input id="s-radius" type="number" min="1" max="500" step="5" class="w-full mt-1 bg-[color:var(--panel-2)] border border-[color:var(--border)] rounded-lg px-3 py-2 text-[13px] mono text-[color:var(--text)]"></label>
+            <label class="text-[11px] mono text-[color:var(--muted)]">PIN (kept in browser)
+                <input id="s-pin" type="password" autocomplete="off" class="w-full mt-1 bg-[color:var(--panel-2)] border border-[color:var(--border)] rounded-lg px-3 py-2 text-[13px] mono text-[color:var(--text)]"></label>
+        </div>
+        <div class="px-5 pb-4">
+            <button id="s-save" type="button" class="px-4 py-2 rounded-lg border border-[color:var(--border)] bg-[color:var(--panel-2)] text-[color:var(--text)] text-[12px] font-semibold transition hover:border-[color:var(--accent)] hover:text-[color:var(--accent)]">Save search window</button>
+        </div>
+    </section>
+
     <!-- PLOT -->
     <main class="panel rounded-2xl relative h-[560px] overflow-hidden scanline">
         <!-- Live HUD -->
@@ -1292,6 +1314,45 @@
             draw();
             renderTable();
         }
+        // --- Search settings panel (writes to /api/settings; PIN stays in localStorage) ---
+        function settingsPanel() {
+            const el = (id) => document.getElementById(id);
+            const status = el('settings-status');
+            el('s-pin').value = localStorage.getItem('settings_pin') || '';
+
+            fetch('/api/settings').then((r) => r.json()).then((w) => {
+                if (w && typeof w.price_min === 'number') {
+                    el('s-price-min').value = w.price_min;
+                    el('s-price-max').value = w.price_max;
+                    el('s-zip').value = w.zipcode;
+                    el('s-radius').value = w.radius_mi;
+                    status.innerText = 'Loaded';
+                }
+            }).catch(() => { status.innerText = 'settings unavailable'; });
+
+            el('s-save').addEventListener('click', async () => {
+                const pin = el('s-pin').value.trim();
+                localStorage.setItem('settings_pin', pin); // never committed, never in bundle
+                const payload = {
+                    price_min: Number(el('s-price-min').value),
+                    price_max: Number(el('s-price-max').value),
+                    zipcode: el('s-zip').value.trim(),
+                    radius_mi: Number(el('s-radius').value),
+                };
+                status.innerText = 'saving...';
+                try {
+                    const res = await fetch('/api/settings', {
+                        method: 'PUT',
+                        headers: { 'content-type': 'application/json', 'x-settings-secret': pin },
+                        body: JSON.stringify(payload),
+                    });
+                    status.innerText = res.ok ? 'saved' : (res.status === 401 ? 'wrong PIN' : 'error ' + res.status);
+                } catch {
+                    status.innerText = 'network error';
+                }
+            });
+        }
+        settingsPanel();
         loadData();
 
         window.addEventListener('resize', () => Plotly.Plots.resize(els.plot));
