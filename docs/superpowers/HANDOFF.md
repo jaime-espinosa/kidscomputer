@@ -74,15 +74,17 @@ the fleet; the canvasser auto-discovers new deals.
 - ✅ **Two plan candidates authored & preserved** (durable, in-repo) at
   `docs/superpowers/plans/_phase2-author-candidates/` → `codex-candidate.md`, `opus-candidate.md`,
   `plan-brief.md`. (Both are full ~75–82KB TDD plans; Opus's is grounded in the real v1 libs.)
-- ⏳ **Consensus synthesis was RUNNING when paused** (same-session workflow `wo620ykrk` /
-  run `wf_6d35e1cb-bc4`): synthesize → adversarial-verify → fix → writes the FINAL plan to
-  `docs/superpowers/plans/2026-06-19-deal-canvasser-phase2-plan.md`. **That path may currently hold
-  Codex's raw candidate or a partial synthesis — do NOT trust it until re-synthesized.**
-- **RESUME (new session):** workflows don't resume cross-session, so EITHER re-run a fresh
-  synthesis from the two preserved candidates (read both + the spec + this handoff → write the
-  consensus plan, then adversarially verify for schema-correctness: no phantom `title`/`price`
-  fields, `listing_key` dedup consistent across the Node-S0/Python-S1 split, write-legal rows),
-  OR hand-merge them. Then commit the plan and proceed via `subagent-driven-development`.
+- ✅ **Consensus plan SYNTHESIZED + verified + committed:**
+  `docs/superpowers/plans/2026-06-19-deal-canvasser-phase2-plan.md` (17 TDD tasks: **S0-0..S0-5**
+  Node/vitest generalizations in `~/kids/computers` FIRST, then **S1-0..S1-10** Python/pytest scrape
+  agent in `~/src`). Verified schema-correct (explicit asserts that `title`/`price` are NOT
+  Hardware fields; `z` is price; `listing_key` dedup consistent across the Node/Python split).
+- **RESUME (next step) = BUILD IT:** run `superpowers:subagent-driven-development` against that plan.
+  S0 is in `~/kids/computers` (branch `feat/canvasser-phase2-s0`); S1 is in `~/src` (branch
+  `feat/marketplace-scraper-phase2`) and is **Python** using the `~/src` cookie-vault substrate.
+  S1 also needs the one-time MANUAL setup (Task S1-2 allowlist + S1-1 cookie capture with a BURNER
+  FB/OfferUp account) before its live run. The Airtable schema adds (`listing_key` field + `Retailer`
+  source choice, Tasks S0-5) are done by the assistant via Airtable MCP at execution time.
 
 ## PHASE 2 — design summary (NOTHING built yet)
 **Goal:** automate MORE sources than eBay. Decisions locked with the user:
