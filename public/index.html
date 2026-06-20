@@ -236,6 +236,52 @@
             border: 1px solid var(--border);
         }
         .clink-rev:hover { border-color: var(--accent); color: var(--accent); }
+
+        /* Chat */
+        .chat-msg {
+            max-width: 88%;
+            padding: 9px 13px;
+            border-radius: 14px;
+            white-space: pre-wrap;
+            word-break: break-word;
+        }
+        .chat-bot {
+            align-self: flex-start;
+            background: var(--panel);
+            border: 1px solid var(--border-soft);
+            color: var(--text);
+            border-bottom-left-radius: 4px;
+        }
+        .chat-user {
+            align-self: flex-end;
+            background: rgba(56,189,248,0.14);
+            border: 1px solid rgba(56,189,248,0.3);
+            color: var(--text);
+            border-bottom-right-radius: 4px;
+        }
+        .chat-msg b, .chat-msg strong { color: var(--accent); font-weight: 600; }
+        .chat-msg ul { margin: 4px 0; padding-left: 18px; list-style: disc; }
+        .chat-msg li { margin: 2px 0; }
+        .chat-msg code { font-family: 'JetBrains Mono', monospace; font-size: 12px; color: var(--good); }
+        .chat-typing { display: inline-flex; gap: 4px; align-items: center; }
+        .chat-typing span {
+            width: 6px; height: 6px; border-radius: 99px; background: var(--muted);
+            animation: chatBlink 1.2s infinite ease-in-out both;
+        }
+        .chat-typing span:nth-child(2) { animation-delay: .2s; }
+        .chat-typing span:nth-child(3) { animation-delay: .4s; }
+        @keyframes chatBlink { 0%, 80%, 100% { opacity: .25; } 40% { opacity: 1; } }
+        .chat-chip {
+            font-size: 11px;
+            padding: 5px 11px;
+            border-radius: 99px;
+            border: 1px solid var(--border);
+            background: var(--panel);
+            color: var(--muted);
+            cursor: pointer;
+            transition: border-color .15s ease, color .15s ease;
+        }
+        .chat-chip:hover { border-color: var(--accent); color: var(--accent); }
     </style>
 </head>
 <body class="min-h-screen">
@@ -545,6 +591,42 @@
                 </thead>
                 <tbody id="dt-body"></tbody>
             </table>
+        </div>
+    </section>
+
+    <!-- DATA CHATBOT -->
+    <section class="panel rounded-2xl overflow-hidden">
+        <div class="flex items-center justify-between px-5 py-3.5 border-b border-[color:var(--border-soft)]">
+            <h3 class="text-sm font-semibold tracking-tight flex items-center gap-2">
+                <span class="relative flex h-2 w-2">
+                    <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-[color:var(--accent)] opacity-60"></span>
+                    <span class="relative inline-flex rounded-full h-2 w-2 bg-[color:var(--accent)]"></span>
+                </span>
+                Fleet Data Assistant
+            </h3>
+            <span class="text-[11px] mono text-[color:var(--faint)]">Ask about specs &middot; prices &middot; value</span>
+        </div>
+
+        <div class="grid place-items-center p-5">
+          <div class="w-full max-w-[640px] aspect-square max-h-[640px] flex flex-col rounded-2xl border border-[color:var(--border-soft)] bg-[color:var(--panel-2)] overflow-hidden">
+            <!-- Message log -->
+            <div id="chat-log" class="flex-1 overflow-y-auto p-4 flex flex-col gap-3 text-[13px] leading-relaxed">
+                <div class="chat-msg chat-bot">
+                    Ask me anything about the fleet &mdash; e.g. <span class="mono text-[color:var(--accent)]">"cheapest system that runs 8 agents"</span> or <span class="mono text-[color:var(--accent)]">"best value desktop under $1000"</span>.
+                </div>
+            </div>
+            <!-- Suggestion chips -->
+            <div id="chat-chips" class="flex flex-wrap gap-2 px-4 pb-2"></div>
+            <!-- Input -->
+            <form id="chat-form" class="flex items-center gap-2 p-3 border-t border-[color:var(--border-soft)] bg-[color:var(--panel)]">
+                <input id="chat-input" type="text" autocomplete="off" placeholder="Ask a data question&hellip;"
+                    class="flex-1 bg-[color:var(--panel-2)] border border-[color:var(--border)] rounded-lg px-3 py-2.5 text-[13px] text-[color:var(--text)] outline-none focus:border-[color:var(--accent)] transition" />
+                <button id="chat-send" type="submit"
+                    class="grid place-items-center w-10 h-10 rounded-lg bg-[color:var(--accent)] text-[#07120c] transition hover:bg-[#7dd3fc] disabled:opacity-40 disabled:cursor-not-allowed">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2.2"><path stroke-linecap="round" stroke-linejoin="round" d="M5 12h14M13 6l6 6-6 6"/></svg>
+                </button>
+            </form>
+          </div>
         </div>
     </section>
 
@@ -1353,6 +1435,99 @@
             });
         }
         settingsPanel();
+
+        // --- Data chatbot ---
+        function chatbot() {
+            const log = document.getElementById('chat-log');
+            const form = document.getElementById('chat-form');
+            const input = document.getElementById('chat-input');
+            const sendBtn = document.getElementById('chat-send');
+            const chips = document.getElementById('chat-chips');
+            const history = []; // {role, content}
+            let busy = false;
+
+            const SUGGESTIONS = [
+                'Cheapest system that runs 8 agents',
+                'Best value desktop under $1000',
+                'Which system has the highest FPS?',
+                'Compare owned vs not owned',
+            ];
+            SUGGESTIONS.forEach((s) => {
+                const b = document.createElement('button');
+                b.type = 'button';
+                b.className = 'chat-chip';
+                b.textContent = s;
+                b.addEventListener('click', () => { if (!busy) { input.value = s; form.requestSubmit(); } });
+                chips.appendChild(b);
+            });
+
+            // Minimal, safe markdown -> HTML (escape first, then format)
+            function fmt(text) {
+                let h = text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+                h = h.replace(/\*\*(.+?)\*\*/g, '<b>$1</b>');
+                h = h.replace(/`([^`]+?)`/g, '<code>$1</code>');
+                // bullet lists
+                h = h.replace(/(?:^|\n)[-*] (.+)/g, (_, item) => '\n<li>' + item + '</li>');
+                h = h.replace(/(<li>[\s\S]*?<\/li>)/g, '<ul>$1</ul>').replace(/<\/ul>\s*<ul>/g, '');
+                h = h.replace(/\n/g, '<br>');
+                return h;
+            }
+
+            function addMsg(role, text) {
+                const el = document.createElement('div');
+                el.className = 'chat-msg ' + (role === 'user' ? 'chat-user' : 'chat-bot');
+                if (role === 'user') el.textContent = text; else el.innerHTML = fmt(text);
+                log.appendChild(el);
+                log.scrollTop = log.scrollHeight;
+                return el;
+            }
+
+            form.addEventListener('submit', async (e) => {
+                e.preventDefault();
+                const q = input.value.trim();
+                if (!q || busy) return;
+
+                busy = true;
+                sendBtn.disabled = true;
+                input.value = '';
+                addMsg('user', q);
+                history.push({ role: 'user', content: q });
+
+                // typing indicator
+                const botEl = addMsg('bot', '');
+                botEl.innerHTML = '<span class="chat-typing"><span></span><span></span><span></span></span>';
+
+                try {
+                    const res = await fetch('/api/chat', {
+                        method: 'POST',
+                        headers: { 'content-type': 'application/json' },
+                        body: JSON.stringify({ messages: history, dataset: db }),
+                    });
+                    if (!res.ok || !res.body) throw new Error('HTTP ' + res.status);
+
+                    const reader = res.body.getReader();
+                    const decoder = new TextDecoder();
+                    let answer = '';
+                    while (true) {
+                        const { done, value } = await reader.read();
+                        if (done) break;
+                        answer += decoder.decode(value, { stream: true });
+                        botEl.innerHTML = fmt(answer);
+                        log.scrollTop = log.scrollHeight;
+                    }
+                    if (!answer.trim()) { botEl.innerHTML = fmt('No response. Please try again.'); }
+                    else history.push({ role: 'assistant', content: answer });
+                } catch (err) {
+                    botEl.innerHTML = fmt('Sorry, I could not reach the data service. ' + (err && err.message ? '(' + err.message + ')' : ''));
+                } finally {
+                    busy = false;
+                    sendBtn.disabled = false;
+                    input.focus();
+                }
+            });
+        }
+        chatbot();
+
         loadData();
 
         window.addEventListener('resize', () => Plotly.Plots.resize(els.plot));
