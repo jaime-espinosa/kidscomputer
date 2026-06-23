@@ -4,10 +4,15 @@ import { applyWindow, dedup, capInserts } from "../../scripts/lib/filter.mjs"
 const mk = (id, price, dist) => ({ ebay_item_id: id, price, distance_mi: dist })
 
 describe("applyWindow", () => {
-  it("keeps only price in [min,max] AND distance <= radius (null distance dropped)", () => {
+  it("keeps price∈[min,max] AND (distance null/ships OR distance<=radius)", () => {
     const win = { price_min: 200, price_max: 1000, radius_mi: 100 }
-    const items = [mk("1", 150, 10), mk("2", 500, 50), mk("3", 500, 150), mk("4", 800, null)]
-    expect(applyWindow(items, win).map((i) => i.ebay_item_id)).toEqual(["2"])
+    const items = [
+      mk("1", 150, 10),   // below price → drop
+      mk("2", 500, 50),   // in window → keep
+      mk("3", 500, 150),  // too far → drop
+      mk("4", 800, null), // ships/unknown → KEEP (was dropped in v1)
+    ]
+    expect(applyWindow(items, win).map((i) => i.ebay_item_id)).toEqual(["2", "4"])
   })
 })
 

@@ -4,8 +4,8 @@ export function applyWindow(items, win) {
       typeof i.price === "number" &&
       i.price >= win.price_min &&
       i.price <= win.price_max &&
-      typeof i.distance_mi === "number" &&
-      i.distance_mi <= win.radius_mi,
+      // null/undefined distance = ships nationally / unknown → keep; numeric must be within radius
+      (i.distance_mi == null || (typeof i.distance_mi === "number" && i.distance_mi <= win.radius_mi)),
   )
 }
 
