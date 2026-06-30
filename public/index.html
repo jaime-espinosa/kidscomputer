@@ -296,18 +296,10 @@
             <div>
                 <span class="ctrl-label"><span class="dot" style="background:var(--good)"></span>Shape by Metric</span>
                 <select id="m-shape">
-                    <option value="owned">Ownership</option>
                     <option value="type">Form Factor</option>
+                    <option value="owned">Ownership</option>
                     <option value="condition">Condition</option>
                     <option value="none">Uniform</option>
-                </select>
-            </div>
-            <div>
-                <span class="ctrl-label"><span class="dot" style="background:var(--accent)"></span>Orthogonal Views</span>
-                <select id="m-proj">
-                    <option value="off">Off</option>
-                    <option value="walls">On Plot (wall shadows)</option>
-                    <option value="panels">2D Panels (XY · YZ · ZX)</option>
                 </select>
             </div>
             <div>
@@ -323,43 +315,6 @@
                     <option value="off">Off</option>
                     <option value="on">On (C · B · A · A+ · AA)</option>
                 </select>
-            </div>
-        </div>
-
-        <!-- AXIS RANGE SLIDERS -->
-        <div class="grid grid-cols-1 md:grid-cols-3 gap-x-6 gap-y-4 px-5 pb-5 pt-1 border-t border-[color:var(--border-soft)]">
-            <div>
-                <div class="rng-head">
-                    <span class="ctrl-label" style="margin-bottom:0"><span class="dot" style="background:var(--accent)"></span>Agents</span>
-                    <span class="rng-val mono"><b id="rv-agents-lo">0</b> &ndash; <b id="rv-agents-hi">12</b></span>
-                </div>
-                <div class="rng-track" id="rt-agents">
-                    <div class="rng-rail"></div><div class="rng-fill"></div>
-                    <input type="range" data-axis="agents" data-end="lo" min="0" max="12" step="1" value="0">
-                    <input type="range" data-axis="agents" data-end="hi" min="0" max="12" step="1" value="12">
-                </div>
-            </div>
-            <div>
-                <div class="rng-head">
-                    <span class="ctrl-label" style="margin-bottom:0"><span class="dot" style="background:var(--accent)"></span>FPS (Log2)</span>
-                    <span class="rng-val mono"><b id="rv-fps-lo">8</b> &ndash; <b id="rv-fps-hi">1024</b></span>
-                </div>
-                <div class="rng-track" id="rt-fps">
-                    <div class="rng-rail"></div><div class="rng-fill"></div>
-                    <input type="range" data-axis="fps" data-end="lo" min="3" max="10" step="1" value="3">
-                    <input type="range" data-axis="fps" data-end="hi" min="3" max="10" step="1" value="10">
-                </div>
-            </div>
-            <div>
-                <div class="rng-head">
-                    <span class="ctrl-label" style="margin-bottom:0"><span class="dot" style="background:var(--accent)"></span>Price ($)</span>
-                    <span class="rng-val mono"><b id="rv-price-lo">0</b> &ndash; <b id="rv-price-hi">5200</b></span>
-                </div>
-                <div class="rng-track" id="rt-price">
-                    <div class="rng-rail"></div><div class="rng-fill"></div>
-                    <input type="range" data-axis="price" data-end="lo" min="0" max="5200" step="100" value="0">
-                    <input type="range" data-axis="price" data-end="hi" min="0" max="5200" step="100" value="5200">
-                </div>
             </div>
         </div>
 
@@ -425,26 +380,59 @@
     </main>
 
     <!-- ORTHOGONAL 2D VIEWS -->
-    <section id="ortho" class="panel rounded-2xl overflow-hidden hidden">
+    <section id="ortho" class="panel rounded-2xl overflow-hidden">
         <div class="flex items-center justify-between px-5 py-3.5 border-b border-[color:var(--border-soft)]">
             <h3 class="text-sm font-semibold tracking-tight flex items-center gap-2">
                 <span class="dot" style="background:var(--accent)"></span>
                 Orthogonal Projections
             </h3>
-            <span class="text-[11px] mono text-[color:var(--faint)]">2D planes &middot; synced to selection</span>
+            <span class="text-[11px] mono text-[color:var(--faint)]">2D planes &middot; drag a slider to filter its axis</span>
         </div>
         <div class="grid grid-cols-1 md:grid-cols-3 gap-px bg-[color:var(--border-soft)]">
             <div class="bg-[color:var(--panel)] p-3">
                 <div class="text-[10px] mono uppercase tracking-[0.12em] text-[color:var(--muted)] mb-1 px-1">XY &middot; Agents / FPS</div>
                 <div id="plot-xy" class="w-full h-[240px]"></div>
+                <div class="mt-2 pt-2 border-t border-[color:var(--border-soft)]">
+                    <div class="rng-head">
+                        <span class="ctrl-label" style="margin-bottom:0"><span class="dot" style="background:var(--accent)"></span>Agents (X)</span>
+                        <span class="rng-val mono"><b id="rv-agents-lo">0</b> &ndash; <b id="rv-agents-hi">12</b></span>
+                    </div>
+                    <div class="rng-track" id="rt-agents">
+                        <div class="rng-rail"></div><div class="rng-fill"></div>
+                        <input type="range" data-axis="agents" data-end="lo" min="0" max="12" step="1" value="0">
+                        <input type="range" data-axis="agents" data-end="hi" min="0" max="12" step="1" value="12">
+                    </div>
+                </div>
             </div>
             <div class="bg-[color:var(--panel)] p-3">
                 <div class="text-[10px] mono uppercase tracking-[0.12em] text-[color:var(--muted)] mb-1 px-1">YZ &middot; FPS / Price</div>
                 <div id="plot-yz" class="w-full h-[240px]"></div>
+                <div class="mt-2 pt-2 border-t border-[color:var(--border-soft)]">
+                    <div class="rng-head">
+                        <span class="ctrl-label" style="margin-bottom:0"><span class="dot" style="background:var(--accent)"></span>FPS (Y &middot; Log2)</span>
+                        <span class="rng-val mono"><b id="rv-fps-lo">8</b> &ndash; <b id="rv-fps-hi">1024</b></span>
+                    </div>
+                    <div class="rng-track" id="rt-fps">
+                        <div class="rng-rail"></div><div class="rng-fill"></div>
+                        <input type="range" data-axis="fps" data-end="lo" min="3" max="10" step="1" value="3">
+                        <input type="range" data-axis="fps" data-end="hi" min="3" max="10" step="1" value="10">
+                    </div>
+                </div>
             </div>
             <div class="bg-[color:var(--panel)] p-3">
                 <div class="text-[10px] mono uppercase tracking-[0.12em] text-[color:var(--muted)] mb-1 px-1">XZ &middot; Agents / Price</div>
                 <div id="plot-zx" class="w-full h-[240px]"></div>
+                <div class="mt-2 pt-2 border-t border-[color:var(--border-soft)]">
+                    <div class="rng-head">
+                        <span class="ctrl-label" style="margin-bottom:0"><span class="dot" style="background:var(--accent)"></span>Price (Z &middot; $)</span>
+                        <span class="rng-val mono"><b id="rv-price-lo">0</b> &ndash; <b id="rv-price-hi">5200</b></span>
+                    </div>
+                    <div class="rng-track" id="rt-price">
+                        <div class="rng-rail"></div><div class="rng-fill"></div>
+                        <input type="range" data-axis="price" data-end="lo" min="0" max="5200" step="100" value="0">
+                        <input type="range" data-axis="price" data-end="hi" min="0" max="5200" step="100" value="5200">
+                    </div>
+                </div>
             </div>
         </div>
     </section>
@@ -596,7 +584,6 @@
         const els = {
             ft: document.getElementById('f-type'), fc: document.getElementById('f-cond'),
             mc: document.getElementById('m-color'), ms: document.getElementById('m-shape'),
-            mp: document.getElementById('m-proj'),
             mr: document.getElementById('m-range'),
             mg: document.getElementById('m-grades'),
             gradeEditor: document.getElementById('grade-editor'),
@@ -779,9 +766,7 @@
             }
 
             let cMode = els.mc.value, sMode = els.ms.value;
-            let projMode = els.mp.value; // 'off' | 'walls' | 'panels'
-            let wallsOn = projMode === 'walls';
-            let panelsOn = projMode === 'panels';
+            let wallsOn = false; // orthogonal 2D panels are always shown below
             let dynamic = els.mr.value === 'dynamic';
             let gradesOn = els.mg.value === 'on';
             els.gradeEditor.classList.toggle('hidden', !gradesOn);
@@ -971,14 +956,8 @@
                 }
             });
 
-            // Orthogonal 2D panels (separate section below the main plot)
-            const orthoSec = document.getElementById('ortho');
-            if (panelsOn) {
-                orthoSec.classList.remove('hidden');
-                drawOrtho(data, mC, mS, mL, cMode, log2Fps);
-            } else {
-                orthoSec.classList.add('hidden');
-            }
+            // Orthogonal 2D panels (always shown below the main plot)
+            drawOrtho(data, mC, mS, mL, cMode, log2Fps);
         }
 
         // Render three synced 2D orthogonal scatter planes (XY, YZ, ZX)
@@ -1202,7 +1181,7 @@
 
         function drawAll() { draw(); renderTable(); }
 
-        [els.ft, els.fc, els.mc, els.ms, els.mp, els.mr, els.mg].forEach(e => e.addEventListener('change', drawAll));
+        [els.ft, els.fc, els.mc, els.ms, els.mr, els.mg].forEach(e => e.addEventListener('change', drawAll));
 
         // Column sorting
         document.querySelectorAll('table.dt thead th').forEach(th => {
@@ -1247,7 +1226,6 @@
             els.fc.value = 'All';
             els.mc.value = 'value';
             els.ms.value = els.ms.options[0].value;
-            els.mp.value = 'off';
             els.mr.value = 'dynamic';
             els.mg.value = 'off';
 
