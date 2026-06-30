@@ -850,6 +850,11 @@
                 });
             }
 
+            // Preserve the user's current camera (zoom/orientation) across redraws
+            const savedCamera = (els.plot && els.plot._fullLayout && els.plot._fullLayout.scene && els.plot._fullLayout.scene._scene)
+                ? els.plot._fullLayout.scene._scene.getCamera()
+                : ((els.plot && els.plot.layout && els.plot.layout.scene && els.plot.layout.scene.camera) || null);
+
             Plotly.newPlot(els.plot, [
                 {
                     type: 'scatter3d',
@@ -925,7 +930,7 @@
                         ticktext: ['8', '16', '32', '64', '128', '256', '512', '1024']
                     }, axisCommon),
                     zaxis: Object.assign({title: 'Price ($)', range: zRange}, axisCommon),
-                    camera: { eye: {x: 1.6, y: -1.6, z: 0.55} },
+                    camera: savedCamera || { eye: {x: 1.6, y: -1.6, z: 0.55} },
                     aspectmode: 'cube'
                 }
             }, {responsive: true, displayModeBar: false}).then(() => {
