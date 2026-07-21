@@ -51,10 +51,10 @@ describe("airtable.create", () => {
     expect(fetch.calls[0].body.records).toHaveLength(10)
     expect(fetch.calls[1].body.records).toHaveLength(5)
   })
-  it("CANDIDATE_FIELDS matches the v2 data model", () => {
+  it("CANDIDATE_FIELDS includes listing_key for cross-source dedup", () => {
     expect(CANDIDATE_FIELDS).toEqual([
       "name", "type", "condition", "owned", "source", "status", "found_date",
-      "distance_mi", "listing_url", "ebay_item_id", "gpu_model", "vram", "ram", "z",
+      "distance_mi", "listing_url", "listing_key", "ebay_item_id", "gpu_model", "vram", "ram", "z",
     ])
   })
   it("omits null/undefined fields (e.g. condition:null, distance_mi:null) but keeps owned:false", async () => {
@@ -79,5 +79,27 @@ describe("airtable.create", () => {
     expect(fields.ebay_item_id).toBe("1")
     expect(fields.name).toBe("GPU")
     expect(fields.z).toBe(400)
+  })
+})
+
+describe("airtable.listExistingKeys", () => {
+  it("pages and returns the set of listing_key values", async () => {
+    const fetch = fakeFetch([
+      { body: { records: [{ fields: { listing_key: "eBay:1" } }], offset: "o1" } },
+      { body: { records: [{ fields: { listing_key: "Craigslist:x" } }, { fields: {} }] } },
+    ])
+    const keys = await at(fetch).listExistingKeys()
+    expect([...keys].sort()).toEqual(["Craigslist:x", "eBay:1"])
+    expect(fetch.calls[0].url).toContain("fields%5B%5D=listing_key")
+  })
+})
+
+describe("airtable.count", () => {
+  it("counts ALL Hardware rows even when a legacy curated row lacks listing_key", async () => {
+    const fetch = fakeFetch([
+      { body: { records: [{ id: "rec1" }, { id: "rec2" }], offset: "o1" } },
+      { body: { records: [{ id: "rec3" }] } },
+    ])
+    await expect(at(fetch).count()).resolves.toBe(3)
   })
 })
