@@ -4,18 +4,24 @@ export function applyWindow(items, win) {
       typeof i.price === "number" &&
       i.price >= win.price_min &&
       i.price <= win.price_max &&
-      typeof i.distance_mi === "number" &&
-      i.distance_mi <= win.radius_mi,
+      // null/undefined distance = ships nationally / unknown → keep; numeric must be within radius
+      (i.distance_mi == null || (typeof i.distance_mi === "number" && i.distance_mi <= win.radius_mi)),
   )
 }
 
-export function dedup(items, existingIds) {
-  const seen = new Set(existingIds)
+export function keyOf(item) {
+  if (item.listing_key) return String(item.listing_key)
+  if (item.ebay_item_id != null) return `eBay:${item.ebay_item_id}` // back-compat fallback
+  return ""
+}
+
+export function dedup(items, existingKeys) {
+  const seen = new Set(existingKeys)
   const result = []
   for (const item of items) {
-    const id = String(item.ebay_item_id)
-    if (!seen.has(id)) {
-      seen.add(id)
+    const key = keyOf(item)
+    if (key && !seen.has(key)) {
+      seen.add(key)
       result.push(item)
     }
   }
