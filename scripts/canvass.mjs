@@ -18,9 +18,10 @@ export async function runCanvass(deps) {
     const win = resolveWindow(ctrl)
     const raw = await ebay.search(win)
     const windowed = applyWindow(raw, win)
-    const existing = await airtable.listExistingIds()
+    const existing = await airtable.listExistingKeys()
+    const currentCount = await airtable.count()
     const fresh = dedup(windowed, existing)
-    const { toInsert, capReached } = capInserts(fresh, { currentCount: existing.size, max })
+    const { toInsert, capReached } = capInserts(fresh, { currentCount, max })
 
     const rows = toInsert.map((i) => {
       const specs = parseTitle(i.title)
@@ -36,6 +37,7 @@ export async function runCanvass(deps) {
         found_date: pacificDateString(now),
         distance_mi: i.distance_mi,
         listing_url: cleanUrl(i.url),
+        listing_key: `eBay:${i.ebay_item_id}`,
         ebay_item_id: i.ebay_item_id,
         z: i.price,
         gpu_model: specs.gpu_model ?? undefined,

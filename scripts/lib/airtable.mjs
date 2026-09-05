@@ -1,6 +1,6 @@
 export const CANDIDATE_FIELDS = [
   "name", "type", "condition", "owned", "source", "status", "found_date",
-  "distance_mi", "listing_url", "ebay_item_id", "gpu_model", "vram", "ram", "z",
+  "distance_mi", "listing_url", "listing_key", "ebay_item_id", "gpu_model", "vram", "ram", "z",
 ]
 
 export function createAirtable({ token, baseId, table = "Hardware", fetchImpl = fetch }) {
@@ -27,8 +27,40 @@ export function createAirtable({ token, baseId, table = "Hardware", fetchImpl = 
     return ids
   }
 
+  async function listExistingKeys() {
+    const keys = new Set()
+    let offset
+    do {
+      const url = new URL(base)
+      url.searchParams.set("pageSize", "100")
+      url.searchParams.set("fields[]", "listing_key")
+      if (offset) url.searchParams.set("offset", offset)
+      const res = await fetchImpl(url.toString(), { headers: auth })
+      if (!res.ok) throw new Error(`Airtable list ${res.status}: ${await res.text()}`)
+      const data = await res.json()
+      for (const r of data.records ?? []) {
+        const k = r.fields?.listing_key
+        if (k) keys.add(String(k))
+      }
+      offset = data.offset
+    } while (offset)
+    return keys
+  }
+
   async function count() {
-    return (await listExistingIds()).size
+    let total = 0
+    let offset
+    do {
+      const url = new URL(base)
+      url.searchParams.set("pageSize", "100")
+      if (offset) url.searchParams.set("offset", offset)
+      const res = await fetchImpl(url.toString(), { headers: auth })
+      if (!res.ok) throw new Error(`Airtable count ${res.status}: ${await res.text()}`)
+      const data = await res.json()
+      total += data.records?.length ?? 0
+      offset = data.offset
+    } while (offset)
+    return total
   }
 
   async function create(rows) {
@@ -47,7 +79,7 @@ export function createAirtable({ token, baseId, table = "Hardware", fetchImpl = 
     return created
   }
 
-  return { listExistingIds, count, create }
+  return { listExistingIds, listExistingKeys, count, create }
 }
 
 function pick(row) {
