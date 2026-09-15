@@ -16,7 +16,7 @@ function deps(overrides = {}) {
         { ebay_item_id: "2", title: "Cheap", price: 100, url: "https://ebay.com/itm/2", distance_mi: 10, condition: null },
       ]),
     },
-    airtable: { listExistingIds: vi.fn(async () => new Set()), count: vi.fn(async () => 0), create: vi.fn(async () => 1) },
+    airtable: { listExistingKeys: vi.fn(async () => new Set()), count: vi.fn(async () => 0), create: vi.fn(async () => 1) },
     health: vi.fn(async () => {}),
     now: new Date("2026-07-01T10:30:00Z"), // 03:30 PDT → hour matches target 3
     max: 150,
@@ -27,17 +27,17 @@ function deps(overrides = {}) {
 }
 
 describe("runCanvass", () => {
-  it("inserts filtered+deduped candidates with stripped URL and marks the run", async () => {
+  it("inserts filtered+deduped candidates with listing_key, stripped URL, and marks the run", async () => {
     const d = deps()
     const r = await runCanvass(d)
     expect(d.ebay.search).toHaveBeenCalledWith(expect.objectContaining(win))
     const inserted = d.airtable.create.mock.calls[0][0]
-    expect(inserted.map((x) => x.ebay_item_id)).toEqual(["1"]) // $100 filtered out
+    expect(inserted.map((x) => x.listing_key)).toEqual(["eBay:1"]) // $100 row filtered out
+    expect(inserted.map((x) => x.ebay_item_id)).toEqual(["1"])
     expect(inserted[0].listing_url).toBe("https://ebay.com/itm/1") // tracking stripped
     expect(inserted[0].status).toBe("candidate")
     expect(inserted[0].source).toBe("eBay")
     expect(inserted[0].z).toBe(500)
-    // write-legal contract vs the live base (no typecast): checkbox boolean + legal singleSelect choice
     expect(inserted[0].owned).toBe(false)
     expect(inserted[0].condition).toBe("Refurbished")
     expect(d.control.markRan).toHaveBeenCalled()
@@ -49,7 +49,7 @@ describe("runCanvass", () => {
     const r = await runCanvass(d)
     expect(r.skipped).toBe("disabled")
     expect(d.ebay.search).not.toHaveBeenCalled()
-    expect(d.airtable.listExistingIds).not.toHaveBeenCalled()
+    expect(d.airtable.listExistingKeys).not.toHaveBeenCalled()
   })
 
   it("NO-OPS with zero outbound calls when the Pacific hour does not match", async () => {
