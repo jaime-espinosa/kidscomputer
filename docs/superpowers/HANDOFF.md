@@ -66,7 +66,29 @@ the fleet; the canvasser auto-discovers new deals.
 - Pre-existing (NOT from this work): `next.config` has `ignoreBuildErrors: true` (from the original
   v0 merge); `storage_capacity_gb` Airtable formula errors on every row (needs a formula fix).
 
-## PHASE 2 — PLANNING IN PROGRESS (resume here)
+## PHASE 2 — BUILT (2026-06-22)
+
+Phase 2 was implemented via `superpowers:subagent-driven-development` against the plan below (all 17
+tasks done, each task-reviewed clean; final opus whole-branch reviews = ready-to-merge both sub-projects).
+Per-task ledger: `.superpowers/sdd/progress.md` (local scratch, git-ignored).
+
+- **S0** (Node, this repo): branch `feat/canvasser-phase2-s0` → **PR #3** vs `main`. 82/82 vitest, build clean.
+  Shared `listing_key` dedup, null-distance kept, count-all-rows cap. Live Airtable schema updated:
+  `listing_key` field (`fldNkMB9Bhq7GL3wM`) + `Retailer` `source` choice (added via a typecast-seed write —
+  the metadata API and Airtable MCP can't append singleSelect choices).
+- **S1** (Python, `~/src`): branch `feat/marketplace-scraper-phase2` (base `_arch-_ops`), **left UNMERGED**
+  at the user's request. `_kids/` package + `scripts/marketplace_scraper.py`; 26/26 pytest, zero live network.
+  A harness commit added `tests/__init__.py` (tests/_kids was shadowing the real `_kids` package under pytest).
+- **PENDING activation — ALL MANUAL, user-only (the scraper does NOTHING until these are done):**
+  1. S1-2: edit `~/src/_cour/_vault/allowlist.toml` (add fb/offerup/craigslist `[cookies]`; remove
+     `facebook.com` from `[deny]`). 2. `pip install --user playwright camoufox browserforge requests
+     python-dotenv && playwright install chromium`. 3. `python3 scripts/capture_cookies.py
+     facebook|offerup|craigslist` with a BURNER FB/OfferUp account. 4. `~/command/env/marketplace-scrape.env`
+     with `AIRTABLE_CI_TOKEN` (chmod 600). 5. `loginctl enable-linger $(whoami)` + `systemctl --user enable
+     --now marketplace-scrape.timer`. 6. Live smoke (S1-10 step 5) with `Control.enabled=true`. Full runbook
+     in the S1-9 task report.
+
+## PHASE 2 — original plan/status (kept for reference)
 **Planning status (2026-06-19):**
 - ✅ **Spec written + reviewed + committed:** `docs/superpowers/specs/2026-06-19-deal-canvasser-phase2-design.md`
   (its "Decisions (resolved at review)" section is authoritative: all sources local, all 6 retailers
